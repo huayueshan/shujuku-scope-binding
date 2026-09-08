@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="将数据库表格写入专用世界书，读取当前绑定的世界书，并按角色自动合并表格预设。功能说明与设置步骤。">
+  <meta name="referrer" content="no-referrer">
+  <title>数据库三层绑定补丁 · 使用指南</title>
+  <link rel="stylesheet" href="site/style.css">
+  <script src="site/release-data.js" defer></script>
+  <script src="site/script.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">跳到正文</a>
+  <header class="topbar">
+    <a class="wordmark" href="#overview">三层绑定 <span>使用指南</span></a>
+    <a class="repository" href="https://github.com/huayueshan/shujuku-scope-binding">GitHub 仓库</a>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <details class="contents" open>
+        <summary>本页目录</summary>
+        <nav aria-label="文档目录">
+          <a href="#overview" aria-current="location">介绍</a>
+          <a href="#worldbooks">表格写入专用世界书</a>
+          <a href="#reading">读取当前全部世界书</a>
+          <a href="#templates">角色预设与自动合并</a>
+          <a href="#bindings">绑定如何生效</a>
+          <a href="#screenshots">界面截图</a>
+          <a href="#compatibility">兼容性</a>
+          <a href="#upgrade">常见问题</a>
+          <a href="#license">许可与隐私</a>
+        </nav>
+      </details>
+      <p class="sidebar-note">数据库二创<br>by huayueshan</p>
+    </aside>
+    <main id="main">
+      <section id="overview" aria-labelledby="page-title">
+        <p class="eyebrow">SILLYTAVERN / TAVERN HELPER</p>
+        <h1 id="page-title">数据库三层绑定补丁</h1>
+        <p class="lead">给数据库单独指定写入的世界书，<br>让不同角色使用各自的表格预设。</p>
+        <p>这是一个数据库二创脚本。除了分层保存绑定，还能把当前世界书提供给数据库读取，并在新对话中合并全局和角色的表格模板。</p>
+        <p><strong>使用要求：</strong>需要酒馆助手和数据库 spv9.2.3，安装并启用后使用。</p>
+        <p>以下操作均从“扩展程序 → 数据库三层绑定”进入。</p>
+        <div class="release-line"><strong data-version>v1.7.10</strong></div>
+        <figure class="overview-shot">
+          <a href="site/media/desktop.jpg" target="_blank" rel="noopener" aria-label="查看桌面面板原图"><img src="site/media/desktop.jpg" alt="三层绑定桌面面板，展示全局角色对话选择与绑定来源" width="1280" height="720" fetchpriority="high"></a>
+          <figcaption>真实隔离酒馆截图，使用虚构“星港向导”角色和演示世界书。</figcaption>
+        </figure>
+      </section>
+
+      <section id="worldbooks">
+        <div class="section-label">01 / 写入</div><h2>表格写到专用世界书，不再混进角色设定</h2>
+        <p>数据库生成的表格条目如果一直写进角色世界书，就会和作者的设定混在一起。单独建一本“数据库表格专用世界书”，把它固定为写入目标，角色世界书就只负责角色设定，表格内容也更容易查看和管理。</p>
+        <p>数据库原生就可以指定写入目标，也会在切换对话后恢复表格并同步。补丁让这个目标可以按全局、角色、对话分别绑定，并补上清理、等待和重试：例如新版原生链路在没有可用表格数据时会直接返回，未必清掉旧条目，补丁会单独安排清理，再等待当前对话的数据就绪后同步。</p>
+        <p class="note"><strong>别漏掉：专用世界书要加入酒馆的全局世界书。</strong>补丁里的“全局写入绑定”只决定写到哪里，不会自动完成这一步。酒馆全局世界书负责让正文读取；只设写入目标，可能出现“表格已经写入，正文却没读到”。</p>
+        <h3>怎么设置</h3>
+        <ol class="steps">
+          <li>在酒馆的世界书界面新建一本空白世界书，例如“数据库表格专用世界书”。</li>
+          <li><strong>把这本书加入酒馆的全局世界书。</strong>这一步让正文生成能按条目的启用和触发规则读取表格内容，不要只创建文件。</li>
+          <li>打开绑定面板，在“写入世界书”一项选择“全局”，再选中刚建的世界书。</li>
+          <li>点击链接图标保存。希望某个角色使用另一本文档时，在“角色”范围单独绑定即可。</li>
+          <li>已有对话如果仍绑定旧目标，在“对话”范围改为这本书；只改全局不会覆盖旧对话的绑定。</li>
+          <li>点击底部“清空并更新写入世界书”，等结束提示后，打开目标世界书检查当前表格。</li>
+        </ol>
+        <figure class="guide-shot"><a href="site/media/write-target.jpg" target="_blank" rel="noopener" aria-label="放大写入世界书设置图"><img src="site/media/write-target.jpg" alt="全局范围已绑定数据库表格专用世界书，右侧链接按钮用于保存" width="1280" height="720" loading="lazy"></a><figcaption>选中“全局”，指定“数据库表格专用世界书”，再点右侧链接图标。上方两行分别显示当前对话使用的配置和正在编辑的全局绑定。点击图片可查看原图。</figcaption></figure>
+        <p>手动按钮和自动同步使用同一套处理。同步开始和结束会有提示；正在处理时再次点击，只会提示已在进行，不会重复启动。期间切换或关闭对话，会使旧对话的同步任务失效。</p>
+        <figure class="guide-shot"><a href="site/media/worldbook-sync.jpg" target="_blank" rel="noopener" aria-label="放大对话切换后的同步提示"><img src="site/media/worldbook-sync.jpg" alt="切换对话后出现蓝色开始清空并同步提示，以及绿色写入世界书清空同步完成提示" width="1280" height="720" loading="lazy"></a><figcaption>切换对话后自动同步：蓝色表示开始，绿色表示完成。这是演示酒馆实际触发的提示；拍摄时延长了停留时间，所以两条能同时看到。使用时等绿色提示出现，再检查目标世界书。</figcaption></figure>
+        <p class="note">清理沿用数据库的条目标记和隔离规则，不是删除整本书，也不保证清除其他隔离编号或外部导入留下的内容。专用世界书用于展示当前对话的表格，不是所有对话的归档；第一次调整写入目标前，仍建议备份。</p>
+      </section>
+
+      <section id="reading">
+        <div class="section-label">02 / 读取</div><h2>让填表时也能读到当前世界书</h2>
+        <p>主对话能看到的设定，负责填表或剧情推进中召回任务的次要 API 不一定都能看到。例如，全局世界书里写了通用规则，用户设定绑定的世界书里写了玩家身份，但数据库选择“跟随角色卡”时，普通世界书读取主要取角色绑定，不会自动汇总这些来源。</p>
+        <p>选择“酒馆当前使用的全部世界书”后，读取来源包含全局、角色、用户设定（人设）和对话当前绑定的世界书。这样，数据库处理表格和相关剧情资料时可以参考同一套背景，不必为每张卡重新维护一份手动列表。</p>
+        <h3>怎么设置</h3>
+        <ol class="steps">
+          <li>在“表格读取世界书”中选择要保存的范围。通常选“全局”，作为后续对话的默认值。</li>
+          <li>展开选择器，选择“酒馆当前使用的全部世界书”，点击链接图标保存。</li>
+          <li>需要剧情推进或其中的召回任务读取这些资料时，在“剧情推进世界书”中单独做同样的设置。只改“表格读取世界书”不会同时修改剧情推进。</li>
+          <li>检查“当前生效”的来源和世界书数量；旧对话已有独立绑定时，要在“对话”范围调整。</li>
+        </ol>
+        <figure class="guide-shot"><a href="site/media/read-worldbooks.jpg" target="_blank" rel="noopener" aria-label="放大世界书读取模式图"><img src="site/media/read-worldbooks.jpg" alt="展开表格读取世界书菜单，可选跟随角色卡、手动选择、酒馆当前使用的全部世界书，演示中全部模式汇总三本书" width="867" height="239" loading="lazy"></a><figcaption>“当前全部”是第三个选项。本例汇总了通用规则、角色设定和玩家身份三本书；前两个原有模式仍可选择。</figcaption></figure>
+        <p>不想读取这么多内容，可以继续选择“跟随角色卡”或“手动选择”。手动模式旁的列表按钮能直接选择世界书和条目，不必回到数据库界面操作。</p>
+        <p class="note">“全部”是当前绑定的书，不是书库里所有文件，也不是把每条内容强制注入。新版仍会处理条目启用、关键词触发和 Agent 筛选；填表提示词通过 <code>$4</code> 使用世界书内容，剧情推进任务通过 <code>$1</code> 使用。对应占位符没有放进提示词，就不能仅靠改绑定让模型看到资料。交火向量召回有独立流程，不等同于这里的世界书读取。</p>
+      </section>
+
+      <section id="templates">
+        <div class="section-label">03 / 模板</div><h2>每张卡选自己的表格，还能合并全局模板</h2>
+        <p>你可以给不同角色绑定不同的表格预设，不用每次开新对话都重新选择。如果大多数卡都需要“时间、地点、背包”，只有少数卡需要“法术”或“阵营”，也不用给每张卡复制一整套通用表格。</p>
+        <p>把通用表格放在全局预设，角色预设只放它需要补充或替换的表格。开启合并后，新对话继承模板时会先取全局，再合入角色预设：<strong>同名表格以角色预设为准，不同名表格保留。</strong>这里合并的是模板，不是把两张同名表的行拼在一起。</p>
+        <h3>怎么设置</h3>
+        <ol class="steps">
+          <li>先在数据库中准备好通用表格预设，以及角色要使用的预设，并设置好全局默认模板。</li>
+          <li>进入对应角色，在绑定面板的“表格预设”中选择“角色”。</li>
+          <li>选择角色预设，需要叠加通用表格时勾选“合并当前全局模板；同名表格以角色预设为准”，再点击链接图标保存。</li>
+          <li>新建对话后，在数据库中检查继承的表格。不勾选合并时，仍是原来的角色预设优先行为。</li>
+        </ol>
+        <figure class="guide-shot"><a href="site/media/character-merge.jpg" target="_blank" rel="noopener" aria-label="放大角色模板合并设置图"><img src="site/media/character-merge.jpg" alt="角色绑定星港专用表格并勾选合并当前全局模板，当前生效显示默认全局与角色模板合并形成的数据库原生对话快照" width="867" height="221" loading="lazy"></a><figcaption>切到“角色”，选预设、勾选合并后保存。本例已生成对话模板，所以“当前生效”显示合并来源；下方保留复制为内嵌和重新应用入口。</figcaption></figure>
+        <p class="note">自动继承只补充尚无对话模板的情况。已有数据库原生对话模板会保留，不会因为换了角色绑定或全局预设而被覆盖；没有角色绑定时，沿用数据库自己的全局回退。</p>
+        <h3>想让预设跟着角色卡一起分享？</h3>
+        <p>普通绑定只引用预设名称，对方也需要有对应预设。内嵌绑定则把预设正文存在角色卡里：可以把一个全局预设复制为内嵌预设，再绑定它。两种绑定都能开启合并全局。</p>
+        <p>内嵌预设可以删除，也可以复制回全局。它与原预设是独立副本，不会互相同步修改。制卡作者可按<a href="analysis/character-embedded-table-preset-standard.md">内嵌预设标准</a>写入。</p>
+        <h3>旧对话也想用合并后的表格？</h3>
+        <ol class="steps"><li>打开“重新应用到当前对话”。</li><li>选择一个或多个全局、内嵌预设。同名预设会标明来源。</li><li>调整列表顺序，越下方的同名表格越优先。</li><li>确认应用。合并后的模板交给数据库自己的公开 API 迁移，再到数据库检查表结构和数据。</li></ol>
+        <p class="note">重新应用会改变当前对话模板，操作前备份。普通对话模板的选择仍在数据库中完成，点击“在数据库中管理对话模板”即可进入。</p>
+      </section>
+
+      <section id="bindings">
+        <div class="section-label">04 / 保存与继承</div><h2>绑定如何生效</h2>
+        <dl class="definitions">
+          <div><dt>全局</dt><dd>通用默认配置，没有角色绑定时使用。</dd></div>
+          <div><dt>角色</dt><dd>这张卡的专用配置，保存在角色卡中。</dd></div>
+          <div><dt>对话</dt><dd>已有快照优先；缺少时先找角色，再找全局，继承后保存到当前对话。</dd></div>
+        </dl>
+        <p>选择范围是在查看或编辑这一层，不是在切换当前对话实际使用的配置。选完项目要点击链接图标保存，断链图标用来解除这一层绑定。</p>
+        <p>保存后分别看“当前范围”和“当前生效”：前者告诉你这一层绑定了什么，后者告诉你现在真正用的是什么、来自哪里。选择器里的“待保存”只是草稿。</p>
+        <p class="note">上面的继承规则适用于补丁管理的绑定。普通对话表格模板由数据库管理，角色模板和手动合并的边界见<a href="#templates">上一节</a>。</p>
+      </section>
+
+      <section id="screenshots">
+        <div class="section-label">05 / 界面</div><h2>桌面与手机</h2>
+        <p>上方是桌面面板，下面是两档手机尺寸。截图使用隔离环境中的虚构角色，展示面板布局；具体操作见前面的步骤。</p>
+        <div class="phone-shots">
+          <figure><a href="site/media/mobile-390.jpg" target="_blank" rel="noopener" aria-label="查看 390 像素手机截图原图"><img src="site/media/mobile-390.jpg" alt="390×844 手机视口，表格读取继承自全局，底部同步按钮可见" width="390" height="844" loading="lazy"></a><figcaption>390 × 844 · 面板 378 × 832</figcaption></figure>
+          <figure><a href="site/media/mobile-360.jpg" target="_blank" rel="noopener" aria-label="查看 360 像素手机截图原图"><img src="site/media/mobile-360.jpg" alt="360×800 窄屏视口，绑定控件换行，面板没有横向溢出" width="360" height="800" loading="lazy"></a><figcaption>360 × 800 · 面板 348 × 788</figcaption></figure>
+        </div>
+      </section>
+
+      <section id="compatibility">
+        <div class="section-label">06 / 版本</div><h2>兼容性</h2>
+        <p>当前基本实测环境：SillyTavern 1.18.0、酒馆助手 4.8.19、数据库 spv9.2.3。</p>
+        <p>旧版本只进行过基本测试，没有进行实机测试；spv9.2.3 还在实际酒馆中测试过。未列出的版本尚未测试。</p>
+        <table><caption>补丁 <span data-version>v1.7.10</span> 的数据库兼容性记录</caption><thead><tr><th scope="col">数据库</th><th scope="col">证据</th></tr></thead><tbody id="compatibility-rows"><tr><td colspan="2">完整记录见<a href="COMPATIBILITY.md">兼容性表</a>。</td></tr></tbody></table>
+        <p class="note">基本实机检查未覆盖真实 AI 生成、所有第三方脚本组合和公开升级渠道。详细限制见<a href="docs/ACCEPTANCE.md">验收记录</a>和<a href="compatibility.json">机器可读映射</a>。</p>
+      </section>
+
+      <section id="upgrade">
+        <div class="section-label">07 / 排错</div><h2>常见问题</h2>
+        <div class="faq">
+          <details><summary>为什么改了全局，旧对话没有变化？</summary><p>旧对话已经有自己的快照，因此仍以它为准。修改全局用于后续继承，不会批量改写旧对话。普通对话模板在数据库中管理，需要合并时使用显式“重新应用”。</p></details>
+          <details><summary>为什么选完项目还显示“待保存”？</summary><p>选择器只修改草稿，还需要点击链接图标。保存后检查当前范围的“已绑定”，不要只看选择器文字。</p></details>
+          <details><summary>切换对话后，世界书还是上一条对话的内容？</summary><p>先等数据库恢复和同步结束，检查“写入世界书”的当前生效目标。仍不正确时，用“清空并更新写入世界书”手动执行一次，并记录结束提示；有错误时不要把绑定核验通过当成内容已同步。</p></details>
+          <details><summary>如何提供有效的错误反馈？</summary><p>提供补丁版本、数据库版本、复现步骤及脱敏错误摘要。不要公开完整 diagnose()、getState() 或 getCharacterData() 输出，它们可能包含角色、聊天和世界书名称。</p></details>
+        </div>
+      </section>
+
+      <section id="license">
+        <div class="section-label">08 / 使用边界</div><h2>许可与隐私</h2>
+        <p>采用 <a href="LICENSE">PolyForm Noncommercial 1.0.0</a>，允许范围以许可全文为准。商业用途不在此许可授权范围内；这是源码公开的非商业许可，不是 OSI 定义的开源许可。分发时保留<a href="NOTICE">必要声明</a>。</p>
+        <p>全局绑定和 UI 状态保存在脚本变量中；角色绑定与内嵌预设保存在角色卡，分享前检查卡内是否带有私人内容。本网站不接入分析统计、账号系统或第三方字体。</p>
+      </section>
+      <footer><span>huayueshan / 数据库三层绑定补丁</span><a href="#overview">返回顶部</a></footer>
+    </main>
+  </div>
+</body>
+</html>

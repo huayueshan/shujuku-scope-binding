@@ -1,0 +1,14 @@
+{
+  "name": "shujuku-scope-binding",
+  "version": "1.7.10",
+  "private": true,
+  "type": "module",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "huayueshan",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/build-release.mjs",
+    "test": "node --experimental-vm-modules --test tests/*.test.mjs",
+    "check": "node --check patches/shujuku-scope-binding-patch.js"
+  }
+}
