@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import './build-scope-binding-userscript.mjs';
+import { createOnlineLoader } from './scope-binding-online-loader.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = file => readFile(new URL(file, root), 'utf8');
@@ -28,12 +29,15 @@ const files = new Map([
 ]);
 const channels = [
   { file: 'online-fixed.json', channel: 'fixed', ref: `v${pkg.version}` },
-  { file: 'online-latest.json', channel: 'latest', ref: 'latest' },
+  { file: 'online-latest.json', channel: 'release' },
+  { file: 'online-dev.json', channel: 'dev' },
 ];
 for (const { file, channel, ref } of channels) {
   const loader = structuredClone(offline);
-  loader.content = `${header}import '${base}@${ref}/dist/index.js';\n`;
-  loader.info = `${channel === 'fixed' ? `固定在线版 v${pkg.version}` : 'latest 在线版（可能跨版本自动升级，受 CDN 缓存影响）'}。${offline.info}`;
+  loader.content = channel === 'fixed'
+    ? `${header}import '${base}@${ref}/dist/index.js';\n`
+    : createOnlineLoader(channel, await read('NOTICE'));
+  loader.info = `${channel === 'fixed' ? `固定在线版 v${pkg.version}` : channel === 'dev' ? 'dev 最新测试版（仅供测试）' : '最新正式在线版（版本查询缓存10分钟，受 CDN 收录延迟影响）'}。${offline.info}`;
   files.set(file, `${JSON.stringify(loader, null, 2)}\n`);
 }
 const manifest = {
@@ -50,10 +54,4 @@ const manifest = {
 await mkdir(new URL('dist/', root), { recursive: true });
 for (const [file, content] of files) await writeFile(new URL(`dist/${file}`, root), content);
 await writeFile(new URL('dist/manifest.json', root), `${JSON.stringify(manifest, null, 2)}\n`);
-await mkdir(new URL('site/', root), { recursive: true });
-await writeFile(new URL('site/release-data.js', root), `window.releaseData = ${JSON.stringify({
-  version: pkg.version,
-  status: current.status,
-  database: current.database.map(({ tag, evidence }) => ({ tag, evidence })),
-}, null, 2)};\n`);
-console.log(`Built ${pkg.version}: offline, fixed, latest and manifest. No upload performed.`);
+console.log(`Built ${pkg.version}: offline, fixed, latest, private dev and manifest. No upload performed. Website unchanged.`);

@@ -1,28 +1,32 @@
 {
   "schemaVersion": 1,
-  "version": "1.7.10",
+  "version": "1.7.11",
   "status": "released",
   "repository": "huayueshan/shujuku-scope-binding",
   "license": "PolyForm-Noncommercial-1.0.0",
   "licenseSha256": "c0ea4a896d2c8c394b29f9427589996db826cd501c512279ff0ed3ef48fabbe5",
   "noticeSha256": "3f6cfb16575e44b1d32ff212b00842102e47438bee796f6121f98c0162d763cc",
-  "sourceSha256": "e31f803605f18a772cab157863895452c83ad292476348c73d72669f726f3859",
+  "sourceSha256": "70678bdb3adc422d7d73a62d88f7dfc334509cbdce166ac35d2a4e42c59d3e2e",
   "files": {
     "index.js": {
-      "sha256": "e31f803605f18a772cab157863895452c83ad292476348c73d72669f726f3859",
-      "bytes": 227140
+      "sha256": "70678bdb3adc422d7d73a62d88f7dfc334509cbdce166ac35d2a4e42c59d3e2e",
+      "bytes": 236025
     },
     "offline.json": {
-      "sha256": "deb365c670e21bdafda99721e573a90c0741beb679dec778b5c60e3758e67bff",
-      "bytes": 234286
+      "sha256": "9b0b4d0feb0b327ae0672a348e3a76d351624de75d5af0ffa488ff4c3c3c7174",
+      "bytes": 243336
     },
     "online-fixed.json": {
-      "sha256": "20e31c77769e9d15a7d5692a62ad806a5e43e0dfc00b96408c4ef42f83bfb66f",
+      "sha256": "5de44638ff6a5b0c23aef903db2ba440b2373fc521249c33ae1ab5da6b236e5f",
       "bytes": 1253
     },
     "online-latest.json": {
-      "sha256": "94df400a5a4d94a6b2f459d77f14cae6fb20e7803770deab6bb6a8a3c7ec290c",
-      "bytes": 1301
+      "sha256": "80edf984c5bdd4b5eae847614be3483b8343543360e9a8d1d231745ef0894ca8",
+      "bytes": 4702
+    },
+    "online-dev.json": {
+      "sha256": "ee6250cfbaa45c392154113909995dc4db3d4a2f336e672d5a21b11419cbb227",
+      "bytes": 4653
     }
   }
 }

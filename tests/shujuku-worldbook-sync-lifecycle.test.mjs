@@ -103,6 +103,36 @@ test('the normal 1200ms callback remains valid after the added settle delay', as
   assert.equal(await result, 'ready');
 });
 
+test('an early populated recovery callback is retained until the settle window ends', async () => {
+  const env = harness();
+  const transition = { chatKey: 'chat-a', settingsGeneration: 1, baselineRevision: 1, requestedAt: 1000, notBefore: 2100 };
+  env.runtime.databaseTableRevision = 2;
+  env.runtime.databaseTableUpdatedAt = 2007;
+  env.clock.now = 2007;
+  assert.equal(env.databaseTableReadyForTransition(transition), false);
+  let finished = false;
+  const result = env.waitForDatabaseTableReady(transition).then(value => { finished = true; return value; });
+  await flushMicrotasks();
+  env.clock.now = 2400;
+  await flushMicrotasks();
+  assert.equal(finished, false);
+  env.clock.now = 2600;
+  assert.equal(await result, 'ready');
+});
+
+test('an early clear callback and pre-transition data do not become ready just by waiting', () => {
+  const env = harness();
+  const transition = { chatKey: 'chat-a', settingsGeneration: 1, baselineRevision: 1, requestedAt: 1000, notBefore: 2100 };
+  env.runtime.databaseTableRevision = 2;
+  env.runtime.databaseTableUpdatedAt = 1200;
+  env.runtime.databaseTableDataState = 'cleared';
+  env.clock.now = 5000;
+  assert.equal(env.databaseTableReadyForTransition(transition), false);
+  env.runtime.databaseTableDataState = 'ready';
+  env.runtime.databaseTableUpdatedAt = 900;
+  assert.equal(env.databaseTableReadyForTransition(transition), false);
+});
+
 test('switching or closing a chat cancels readiness waiting even after manual approval', async () => {
   for (const nextChat of ['chat-b', '']) {
     const env = harness();

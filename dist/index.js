@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.10';
+  const PATCH_VERSION = '1.7.11';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -112,13 +112,19 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     currentChatKey,
     currentRevision,
     updatedAt,
+    dataState,
+    now = Date.now(),
   }) {
     if (!transition) return true;
     if (!currentChatKey || transition.settingsGeneration !== currentSettingsGeneration
       || transition.chatKey !== currentChatKey) return false;
     if (transition.manualApproved) return true;
+    // A populated recovery callback can arrive before the delay gate. Keep it
+    // as evidence while waiting; do not accept an early empty/clear callback.
     return currentRevision > transition.baselineRevision
-      && updatedAt >= transition.notBefore;
+      && (updatedAt >= transition.notBefore
+        || (dataState === 'ready' && updatedAt >= transition.requestedAt
+          && now >= transition.notBefore));
   }
 
   function isBindingContextCurrentCore(context, current) {
@@ -1714,6 +1720,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
 
   function setBinding(feature, scope, value) {
+    assertBindingScopeAvailable(scope);
     if (!FEATURE_IDS.includes(feature) || !SCOPE_IDS.includes(scope)) {
       throw new Error(`无效绑定: ${feature}/${scope}`);
     }
@@ -1749,6 +1756,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function clearBinding(feature, scope) {
+    assertBindingScopeAvailable(scope);
     if (NATIVE_PRESET_FEATURES.has(feature) && scope !== 'character') {
       throw new Error(`${FEATURE_LABELS[feature]} 的${SCOPE_LABELS[scope]}范围必须清理数据库原生绑定`);
     }
@@ -1781,6 +1789,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function setNativePresetBinding(feature, scope, value) {
+    assertBindingScopeAvailable(scope);
+    const initialEpoch = runtime.contextEpoch;
+    const initiallyWithoutChat = !getIdentity().chatKey;
     const api = getDatabaseApi();
     const presetName = String(value || '');
     if (feature === 'tablePreset' && scope === 'chat') {
@@ -1809,12 +1820,18 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       throw new Error('数据库缺少 switchTemplatePreset API');
     }
     if (scope === 'chat') setManagedPreset(feature, null);
-    const result = await switchTemplatePresetWithConfirmation(
+    let result = await switchTemplatePresetWithConfirmation(
       api,
       presetName,
       { scope },
       `${SCOPE_LABELS[scope]}${FEATURE_LABELS[feature]}切换`,
     );
+    if (scope === 'global' && initiallyWithoutChat && !getIdentity().chatKey && initialEpoch === runtime.contextEpoch
+      && result?.success === false
+      && /当前聊天元数据尚未就绪/.test(String(result.error || result.message || ''))) {
+      result = await saveGlobalTemplateWithoutChat(presetName);
+    }
+    await captureDatabaseSettings(true);
     return handleTemplatePresetApiResult(
       feature,
       result,
@@ -1823,6 +1840,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function clearNativePresetBinding(feature, scope) {
+    assertBindingScopeAvailable(scope);
     if (scope === 'global') {
       return setNativePresetBinding(feature, 'global', '');
     }
@@ -1843,6 +1861,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function setBindingForScope(feature, scope, value) {
+    assertBindingScopeAvailable(scope);
     if (NATIVE_PRESET_FEATURES.has(feature) && scope !== 'character') {
       return setNativePresetBinding(feature, scope, value);
     }
@@ -1851,6 +1870,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function clearBindingForScope(feature, scope) {
+    assertBindingScopeAvailable(scope);
     if (NATIVE_PRESET_FEATURES.has(feature) && scope !== 'character') {
       return clearNativePresetBinding(feature, scope);
     }
@@ -1860,6 +1880,64 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function isPatchOwnedBindingScope(feature, scope) {
     return !(NATIVE_PRESET_FEATURES.has(feature) && scope !== 'character');
+  }
+
+  function assertBindingScopeAvailable(scope) {
+    const identity = getIdentity();
+    if (!SCOPE_IDS.includes(scope)) throw new Error(`无效绑定范围：${scope}`);
+    if (scope === 'chat' && !identity.chatKey) throw new Error('请先打开一条对话，再操作对话绑定');
+    if (scope === 'character' && !identity.characterStable) throw new Error('请先选择并加载一个角色，再操作角色绑定');
+  }
+
+  async function saveGlobalTemplateWithoutChat(presetName) {
+    const epoch = runtime.contextEpoch;
+    const profileKey = runtime.databaseProfileKey;
+    const assertCurrent = () => {
+      if (getIdentity().chatKey || runtime.contextEpoch !== epoch || runtime.databaseProfileKey !== profileKey) {
+        throw new Error('操作期间对话或数据库已切换，请重新选择全局预设');
+      }
+    };
+    assertCurrent();
+    if (!profileKey?.endsWith('__settings')) throw new Error('数据库全局模板存储结构不可用');
+    const api = getDatabaseApi();
+    if (presetName && !api?.getTemplatePresetNames?.().includes(presetName)) throw new Error('全局表格预设不存在');
+    const template = presetName ? await api.getTableTemplate({ scope: 'global', presetName }) : null;
+    if (presetName && (!isObject(template) || !Object.keys(template).some(key => key.startsWith('sheet_')))) {
+      throw new Error('无法读取所选全局表格预设');
+    }
+    assertCurrent();
+    const templateKey = profileKey.slice(0, -'settings'.length) + 'template';
+    // The native API mistakes welcome messages for a chat. Only save the native
+    // profile default here; the database restores its runtime when a real chat opens.
+    await mutateDatabaseSettingsViaSave(settings => {
+      assertCurrent();
+      updateVariablesSafely(variables => {
+        assertCurrent();
+        const namespace = variables?.[DB_STORAGE_CONTRACT.settingsNamespace];
+        const stored = isObject(namespace) && parseStoredJson(namespace[profileKey]);
+        if (!isObject(stored)) throw new Error('数据库配置存储不可用');
+        const next = {
+          ...namespace,
+          [profileKey]: JSON.stringify({ ...stored, currentTemplatePresetName: presetName }),
+        };
+        if (template) next[templateKey] = JSON.stringify(template);
+        else delete next[templateKey]; // Native absence means the built-in default.
+        return { ...variables, [DB_STORAGE_CONTRACT.settingsNamespace]: next };
+      }, { type: 'extension', extension_id: '__userscripts' });
+      settings.currentTemplatePresetName = presetName;
+      return true;
+    });
+    assertCurrent();
+    return { success: true, saved: true };
+  }
+
+  async function runBindingUiAction(action) {
+    try { return await action(); } catch (error) {
+      runtime.lastError = String(error?.message || error);
+      host.toastr?.error?.(runtime.lastError);
+      refreshUiStatus();
+      return false;
+    }
   }
 
   function bindingAtScopeMatches(feature, scope, expected) {
@@ -2502,6 +2580,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       currentChatKey: getIdentity().chatKey,
       currentRevision: runtime.databaseTableRevision,
       updatedAt: runtime.databaseTableUpdatedAt,
+      dataState: runtime.databaseTableDataState,
     });
   }
 
@@ -2806,6 +2885,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function getVerificationReport() {
     const identity = getIdentity();
+    if (!identity.chatKey) {
+      return { ok: true, deferred: true, matched: 0, total: 0, features: {},
+        message: '未打开对话；可保存全局或角色绑定，进入对话后核验实际生效状态' };
+    }
     const tableConfig = getTableWorldbookConfig(runtime.settingsRef, identity.chatKey, false) || {};
     const plotConfig = getPlotWorldbookConfig(runtime.settingsRef, false) || {};
     const root = getVisibleDatabaseRoot();
@@ -2984,6 +3067,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function applyMergedTemplateSourcesToCurrentChat(sources, context, onlyIfMissing = false) {
+    assertBindingScopeAvailable('chat');
     const api = getDatabaseApi();
     if (typeof api?.importTemplateFromData !== 'function') {
       throw new Error('数据库缺少 importTemplateFromData API');
@@ -3210,6 +3294,29 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     refreshWriteWorldbook = false,
     resetWriteWorldbook = false,
   ) {
+    if (!getIdentity().chatKey) {
+      if (refreshWriteWorldbook || resetWriteWorldbook) {
+        runtime.lastError = '请先打开一条对话，再清空或更新写入世界书';
+        host.toastr?.info?.(runtime.lastError);
+        return Promise.resolve(false);
+      }
+      const epoch = runtime.contextEpoch;
+      return captureDatabaseSettings(true).then(settings => {
+        if (runtime.contextEpoch !== epoch || getIdentity().chatKey) return false;
+        if (!settings) {
+          runtime.lastError ||= '数据库设置尚未就绪，请稍后重试';
+          refreshUiStatus();
+          return false;
+        }
+        runtime.lastError = '';
+        refreshUiStatus();
+        return true;
+      }).catch(error => {
+        if (error?.code !== 'SJBP_CONTEXT_CHANGED') runtime.lastError = String(error?.message || error);
+        refreshUiStatus();
+        return false;
+      });
+    }
     const context = captureBindingContext();
     const queued = runtime.applyQueue
       .catch(() => false)
@@ -3234,6 +3341,11 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     reason,
     { notifyIfBusy = false, allowCurrentDatabaseState = false } = {},
   ) {
+    if (!getIdentity().chatKey) {
+      runtime.lastError = '请先打开一条对话，再清空或更新写入世界书';
+      host.toastr?.info?.(runtime.lastError);
+      return Promise.resolve(false);
+    }
     const context = captureBindingContext();
     if (!isBindingContextCurrent(context)) return Promise.resolve(false);
     if (allowCurrentDatabaseState && !runtime.writeWorldbookResetRequestPromise
@@ -3407,9 +3519,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function queueDatabaseUiWorldbookSync(feature, sourceOverride = '', delay = 180) {
+    if (!getIdentity().chatKey) return;
+    const context = captureBindingContext();
     clearTimeout(runtime.databaseUiSyncTimers[feature]);
     runtime.databaseUiSyncTimers[feature] = setTimeout(async () => {
       try {
+        if (!isBindingContextCurrent(context)) return;
         const value = getRuntimeWorldbookBindingValue(feature, sourceOverride);
         const config = feature === 'tableWorldbooks'
           ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true)
@@ -3427,10 +3542,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function queueDatabaseUiWriteTargetSync(previousTarget) {
+    if (!getIdentity().chatKey) return;
+    const context = captureBindingContext();
     const feature = 'writeWorldbook';
     clearTimeout(runtime.databaseUiSyncTimers[feature]);
     runtime.databaseUiSyncTimers[feature] = setTimeout(async () => {
       try {
+        if (!isBindingContextCurrent(context)) return;
         const config = getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true);
         const page = getVisibleDatabaseRoot()?.querySelector(DB_UI_CONTRACT.tablePage);
         const nextTarget = normalizeInjectionTarget(
@@ -3449,6 +3567,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function activateDatabaseUiAllWorldbooks(feature) {
+    if (!getIdentity().chatKey) {
+      host.toastr?.info?.('请先打开对话；全局默认请在数据库三层绑定中设置');
+      return;
+    }
     const config = feature === 'tableWorldbooks'
       ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true)
       : getPlotWorldbookConfig(runtime.settingsRef, true);
@@ -3473,12 +3595,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
     let activeButton = segmented.querySelector('[data-sjbp-source-active]');
     if (!activeButton) {
-      activeButton = host.document.createElement('button');
+      const nativeButton = segmented.querySelector(DB_UI_CONTRACT.segmentedItem);
+      activeButton = nativeButton?.cloneNode(true) || host.document.createElement('button');
       activeButton.type = 'button';
       activeButton.className = 'acu-segmented__item sjbp-db-active-source';
       activeButton.dataset.sjbpSourceActive = feature;
       activeButton.setAttribute('role', 'radio');
-      activeButton.innerHTML = '<span class="acu-segmented__label">酒馆当前全部</span>';
+      activeButton.removeAttribute('id');
+      const label = activeButton.querySelector('.acu-segmented__label');
+      if (label) label.textContent = '酒馆当前全部';
+      else activeButton.textContent = '酒馆当前全部';
       activeButton.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -3505,6 +3631,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         button.setAttribute('aria-checked', 'false');
       }
       segmented.style.setProperty('--acu-segment-index', '2');
+    } else {
+      const config = feature === 'tableWorldbooks'
+        ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey)
+        : getPlotWorldbookConfig(runtime.settingsRef);
+      const index = config?.source === 'manual' ? 1 : 0;
+      nativeButtons.forEach((button, i) => {
+        button.classList.toggle('acu-segmented__item--active', i === index);
+        button.setAttribute('aria-checked', String(i === index));
+      });
+      segmented.style.setProperty('--acu-segment-index', String(index));
     }
 
     let status = picker.querySelector('.sjbp-db-active-status');
@@ -3518,9 +3654,11 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       const originLabel = origin && origin !== 'chat' ? `，继承自${SCOPE_LABELS[origin]}` : '';
       const statusText = isActive
         ? `已生效：酒馆当前使用的全部世界书，共 ${runtime.activeWorldbooks.all.length} 本${originLabel}`
-        : `尚未生效：正在把数据库同步到酒馆当前全部${originLabel}`;
+        : !getIdentity().chatKey
+          ? '默认绑定已保存；进入对话后按该对话的绑定应用'
+          : `尚未生效：正在把数据库同步到酒馆当前全部${originLabel}`;
       if (status.textContent !== statusText) status.textContent = statusText;
-      status.classList.toggle('sjbp-db-active-status--error', !isActive);
+      status.classList.toggle('sjbp-db-active-status--error', !isActive && !!getIdentity().chatKey);
       const hint = page.querySelector(DB_UI_CONTRACT.entryHintStrong);
       if (hint && isActive) {
         const names = runtime.activeWorldbooks.all.join('、') || '无';
@@ -3945,6 +4083,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     } else {
       effectiveReason = '当前对话绑定';
     }
+    if (!getIdentity().chatKey) effectiveReason = '已保存的默认绑定；打开对话后按优先级应用';
     let selectedScopeStatus;
     if (scopeBinding !== undefined) {
       selectedScopeStatus = `已绑定：${describeFeatureValue(feature, scopeBinding)}`;
@@ -3973,7 +4112,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         <strong>${FEATURE_LABELS[feature]}</strong>
       </div>
       <div class="sjbp-binding-status">
-        <div><b>当前生效</b><span>${effective ? `${escapeHtml(describeBinding(feature, effective))}；${escapeHtml(effectiveReason)}` : escapeHtml(effectiveReason)}</span></div>
+        <div><b>${getIdentity().chatKey ? '当前对话生效' : '默认绑定'}</b><span>${effective ? `${escapeHtml(describeBinding(feature, effective))}；${escapeHtml(effectiveReason)}` : escapeHtml(effectiveReason)}</span></div>
         <div><b>当前范围</b><span>${SCOPE_LABELS[scope]} · ${escapeHtml(selectedScopeStatus)}</span></div>
       </div>
       <div class="sjbp-row-controls${feature === 'tablePreset' && scope === 'chat' ? ' sjbp-native-template-controls' : ''}">
@@ -4090,6 +4229,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function openManualEditor(feature) {
+    assertBindingScopeAvailable(getEditScope(feature));
     const state = readState();
     const scope = getEditScope(feature, state);
     const current = getControlValue(feature, scope);
@@ -4255,6 +4395,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function openTemplateMergeEditor() {
+    assertBindingScopeAvailable('chat');
     const catalog = getTemplateMergeSourceCatalog();
     runtime.templateMergeEditor = {
       catalog,
@@ -4442,7 +4583,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const verification = connected ? getVerificationReport() : null;
     const verificationFailures = describeVerificationFailures(verification);
     const presetWarnings = describePresetWarnings();
-    const connectedText = verification?.ok
+    const connectedText = runtime.lastError ? runtime.lastError : verification?.deferred ? verification.message : verification?.ok
       ? `绑定已核验 ${verification.matched}/${verification.total}`
         + (presetWarnings.length ? `；预设警告：${presetWarnings.join('；')}` : '')
       : (connected
@@ -4690,7 +4831,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         color: #ffb7b0;
       }
       #acu-app-v2 .sjbp-db-source-is-active .acu-v2-wb-source-picker__list { display: none; }
-      #acu-app-v2 .sjbp-db-active-source .acu-segmented__label { font-size: var(--acu-font-size-caption, 11px); }
+      #acu-app-v2 .sjbp-db-active-source .acu-segmented__label { font-size: inherit; }
+      @media (max-width: 680px) {
+        #acu-app-v2 .acu-segmented:has([data-sjbp-source-active]) .acu-segmented__item { min-height: 44px; }
+        #acu-app-v2 .acu-segmented:has([data-sjbp-source-active]) .acu-segmented__label {
+          white-space: normal; text-overflow: clip; overflow: visible; line-height: 1.3;
+        }
+      }
       @media (max-width: 680px) {
         #sjbp-overlay {
           width: 100vw; height: 100dvh; min-height: 100dvh; padding: 6px;
@@ -4740,7 +4887,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     footer.className = verification?.ok
       ? (presetWarnings.length ? 'is-warning' : 'is-ok')
       : 'is-error';
-    footer.textContent = verification?.ok
+    footer.textContent = runtime.lastError ? runtime.lastError : verification?.deferred ? verification.message : verification?.ok
       ? `绑定已核验 ${verification.matched}/${verification.total}`
         + (presetWarnings.length ? `；预设警告：${presetWarnings.join('；')}` : '')
       : (runtime.settingsRef
@@ -4871,6 +5018,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function captureSelectedFeature(feature, requestedScope = '') {
+    assertBindingScopeAvailable(SCOPE_IDS.includes(requestedScope) ? requestedScope : getEditScope(feature));
     if (!runtime.settingsRef && !await captureDatabaseSettings(false)) {
       runtime.lastError = '尚未连接数据库运行时，不能建立绑定';
       refreshUiStatus();
@@ -4914,7 +5062,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       true,
       false,
       false,
-      feature === 'writeWorldbook',
+      feature === 'writeWorldbook' && !!getIdentity().chatKey,
     );
     if (isPatchOwnedBindingScope(feature, scope)) {
       await setBindingForScope(feature, scope, value);
@@ -4928,6 +5076,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   async function clearSelectedFeature(feature, requestedScope = '') {
     const scope = SCOPE_IDS.includes(requestedScope) ? requestedScope : getEditScope(feature);
+    assertBindingScopeAvailable(scope);
     const scopeBinding = getBindingAtScope(feature, scope);
     const draft = getControlDraft(feature, scope);
     if (scopeBinding === undefined && draft !== undefined) {
@@ -4943,7 +5092,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       true,
       false,
       false,
-      feature === 'writeWorldbook',
+      feature === 'writeWorldbook' && !!getIdentity().chatKey,
     );
     if (isPatchOwnedBindingScope(feature, scope)) {
       await clearBindingForScope(feature, scope);
@@ -5020,6 +5169,24 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const overlay = runtime.overlay;
     if (!overlay) return;
     runtime.choiceMenuDisposer?.();
+    for (const button of host.document.querySelectorAll('[data-sjbp-source-active]')) {
+      const bar = button.parentElement;
+      const feature = button.dataset.sjbpSourceActive;
+      const config = feature === 'tableWorldbooks'
+        ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey)
+        : getPlotWorldbookConfig(runtime.settingsRef);
+      button.remove();
+      const buttons = [...bar.querySelectorAll(DB_UI_CONTRACT.segmentedItem)];
+      const index = config?.source === 'manual' ? 1 : 0;
+      buttons.forEach((item, i) => {
+        item.classList.toggle('acu-segmented__item--active', i === index);
+        item.setAttribute('aria-checked', String(i === index));
+      });
+      bar.style.setProperty('--acu-segment-count', String(buttons.length));
+      bar.style.setProperty('--acu-segment-index', String(index));
+      bar.parentElement?.classList.remove('sjbp-db-source-is-active');
+    }
+    host.document.querySelectorAll('.sjbp-db-active-status').forEach(node => node.remove());
     runtime.choiceMenuDisposer = null;
 
     overlay.querySelectorAll('[data-select-trigger]').forEach(trigger => {
@@ -5239,19 +5406,19 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       });
     });
     overlay.querySelectorAll('[data-bind]').forEach(button => {
-      button.addEventListener('click', () => void captureSelectedFeature(
+      button.addEventListener('click', () => void runBindingUiAction(() => captureSelectedFeature(
         button.dataset.bind,
         button.dataset.bindScope,
-      ));
+      )));
     });
     overlay.querySelectorAll('[data-clear]').forEach(button => {
-      button.addEventListener('click', () => void clearSelectedFeature(
+      button.addEventListener('click', () => void runBindingUiAction(() => clearSelectedFeature(
         button.dataset.clear,
         button.dataset.clearScope,
-      ));
+      )));
     });
     overlay.querySelectorAll('[data-edit-manual]').forEach(button => {
-      button.addEventListener('click', () => void openManualEditor(button.dataset.editManual));
+      button.addEventListener('click', () => void runBindingUiAction(() => openManualEditor(button.dataset.editManual)));
     });
     overlay.querySelector('[data-table-merge-global]')?.addEventListener('change', event => {
       const current = normalizeCharacterTablePresetBindingCore(getControlValue('tablePreset', 'character'));
@@ -5276,7 +5443,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       deleteSelectedCharacterEmbeddedPreset,
     );
     overlay.querySelector('[data-open-native-template]')?.addEventListener('click', () => void openNativeTableTemplate());
-    overlay.querySelector('[data-open-template-merge]')?.addEventListener('click', openTemplateMergeEditor);
+    overlay.querySelector('[data-open-template-merge]')?.addEventListener('click', () => void runBindingUiAction(openTemplateMergeEditor));
     bindChoiceMenus();
   }
 
@@ -5440,7 +5607,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
               true,
               false,
               false,
-              feature === 'writeWorldbook',
+              feature === 'writeWorldbook' && !!getIdentity().chatKey,
             );
           },
           clearBinding: async (feature, scope) => {
@@ -5450,7 +5617,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
               true,
               false,
               false,
-              feature === 'writeWorldbook',
+              feature === 'writeWorldbook' && !!getIdentity().chatKey,
             );
           },
       setEnabled: async enabled => {

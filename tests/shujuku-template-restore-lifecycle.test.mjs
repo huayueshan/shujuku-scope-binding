@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const source = await readFile(new URL('../patches/shujuku-scope-binding-patch.js', import.meta.url), 'utf8');
 const functions = [
+  'assertBindingScopeAvailable',
   'isBindingContextCurrentCore', 'captureBindingContext', 'isBindingContextCurrent',
   'assertBindingContextCurrent', 'invalidateBindingContext', 'waitForWorldbookApiPromise',
   'needsNativePresetRestoreCore', 'tableTemplateMatchesRuntimeCore', 'stableStringify',
@@ -42,6 +43,7 @@ function harness() {
     nativePresetAppliedTokens: {}, nativeTemplateRestorePending: null,
   };
   const env = {
+    SCOPE_IDS: ['global', 'character', 'chat'],
     ...core, clone: copy, runtime, AbortController, setTimeout, clearTimeout, chatKey: 'a', imports: 0,
     data: copy(template), snapshot: { templateStr: JSON.stringify(template), presetName: 'Preset' },
     binding: { value: 'Preset', native: true }, DATABASE_TEMPLATE_RESTORE_TIMEOUT_MS: 20,

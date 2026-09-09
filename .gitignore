@@ -7,3 +7,4 @@ node_modules/
 /dist/offline.json
 /dist/online-fixed.json
 /dist/online-latest.json
+/dist/online-dev.json

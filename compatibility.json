@@ -3,6 +3,30 @@
   "unlistedDatabaseVersions": "unverified",
   "releases": [
     {
+      "patchVersion": "1.7.11",
+      "status": "released",
+      "releaseTag": "v1.7.11",
+      "verifiedAt": "2026-09-10",
+      "sourceSha256": "70678bdb3adc422d7d73a62d88f7dfc334509cbdce166ac35d2a4e42c59d3e2e",
+      "liveTestSourceSha256": "05b6c077f48bd14aad37e9cdb946f75dea046c97e7289b27ca644a0d836c4af8",
+      "changesSinceLiveTest": [
+        "Version label changed from 1.7.11-dev.4 to 1.7.11 only."
+      ],
+      "database": [
+        {
+          "tag": "spv9.2.5",
+          "evidence": "basic-tests-and-live",
+          "limitations": [
+            "Synthetic chats without table rows; no AI generation or nonempty worldbook write."
+          ]
+        }
+      ],
+      "onlineAcceptance": {
+        "releaseLoader": "1.7.10 real CDN load and ten-minute cache verified",
+        "newVersionDiscovery": "Pending jsDelivr indexing; publication authorized before CDN acceptance"
+      }
+    },
+    {
       "patchVersion": "1.7.10",
       "status": "released",
       "releaseTag": "v1.7.10",
@@ -15,56 +39,117 @@
         "offlineFirstImport": "passed-helper-4.8.19",
         "dataPreservingUpdate": "passed-older-1.7.10-candidate-to-final-candidate",
         "method": "Real helper file import for first install; content-only offline replacement and cold startup for update.",
-        "preserved": ["global-bindings", "ui-state", "script-id-enabled-buttons-export-options", "character-data", "chat-variables", "native-chat-template", "non-target-scripts"],
-        "limitations": ["Not a historical schema migration test.", "Not an online API update or CDN acceptance test.", "No AI generation."]
+        "preserved": [
+          "global-bindings",
+          "ui-state",
+          "script-id-enabled-buttons-export-options",
+          "character-data",
+          "chat-variables",
+          "native-chat-template",
+          "non-target-scripts"
+        ],
+        "limitations": [
+          "Not a historical schema migration test.",
+          "Not an online API update or CDN acceptance test.",
+          "No AI generation."
+        ]
       },
       "cleanEnvironmentCheck": {
         "sillyTavernVersion": "1.18.0",
         "tavernHelperVersion": "4.8.19",
         "databaseVersion": "spv9.2.3",
-        "coverage": ["empty-data-startup", "synthetic-character-chat", "global-worldbook-source-inheritance", "five-binding-checks", "default-theme-button-contrast", "mobile-dialog-visibility"],
-        "limitations": ["Final button-class fix was temporarily loaded after the initial clean installation.", "Latest label-only revision was temporarily loaded and checked at desktop and both mobile sizes; earlier functional evidence is retained, not repeated in full.", "Database readiness retries occurred during temporary startup; this label check does not certify initial synchronization timing.", "Not an import or data-preserving upgrade acceptance test.", "No real AI generation."]
+        "coverage": [
+          "empty-data-startup",
+          "synthetic-character-chat",
+          "global-worldbook-source-inheritance",
+          "five-binding-checks",
+          "default-theme-button-contrast",
+          "mobile-dialog-visibility"
+        ],
+        "limitations": [
+          "Final button-class fix was temporarily loaded after the initial clean installation.",
+          "Latest label-only revision was temporarily loaded and checked at desktop and both mobile sizes; earlier functional evidence is retained, not repeated in full.",
+          "Database readiness retries occurred during temporary startup; this label check does not certify initial synchronization timing.",
+          "Not an import or data-preserving upgrade acceptance test.",
+          "No real AI generation."
+        ]
       },
       "database": [
         {
           "tag": "spv8.4",
           "commit": "e4332c1814c0c58da64ed2a35147f15fc98a18f4",
           "evidence": "source-contract",
-          "limitations": ["No live test of this patch candidate on this database version.", "Legacy offline bundle version header may be unknown; settings-shape fallback applies."]
+          "limitations": [
+            "No live test of this patch candidate on this database version.",
+            "Legacy offline bundle version header may be unknown; settings-shape fallback applies."
+          ]
         },
         {
           "tag": "spv8.9.2",
           "commit": "920612f36f62054cccb188e15675b3b9056b3c1e",
           "evidence": "source-contract",
-          "limitations": ["No live test of this patch candidate on this database version.", "Legacy offline bundle version header may be unknown; settings-shape fallback applies."]
+          "limitations": [
+            "No live test of this patch candidate on this database version.",
+            "Legacy offline bundle version header may be unknown; settings-shape fallback applies."
+          ]
         },
         {
           "tag": "spv9.1",
           "commit": "d23513fe10872c45d91d476fa614cb434b2c5e10",
           "evidence": "source-contract",
-          "limitations": ["No live test of this patch candidate on this database version."]
+          "limitations": [
+            "No live test of this patch candidate on this database version."
+          ]
         },
         {
           "tag": "spv9.1.6",
           "commit": "5f1e96f18e5d072d95f78f7b473773e905b4fc49",
           "evidence": "source-contract",
-          "limitations": ["No live test of this patch candidate on this database version."]
+          "limitations": [
+            "No live test of this patch candidate on this database version."
+          ]
         },
         {
           "tag": "spv9.2.3",
           "commit": "c99fa5c6811fbe23aad523091ad972d82a774f86",
           "evidence": "live-basic",
-          "limitations": ["Temporary runtime injection only; not a public installation or upgrade acceptance test.", "No real AI generation in this acceptance run."]
+          "limitations": [
+            "Temporary runtime injection only; not a public installation or upgrade acceptance test.",
+            "No real AI generation in this acceptance run."
+          ]
         }
       ],
       "liveEnvironment": {
         "sillyTavernVersion": "1.18.0",
         "tavernHelperVersion": null,
-        "viewports": [[390, 844], [360, 800]],
-        "coverage": ["api-owner-discovery", "same-parameter-settings-save", "two-existing-chats", "reload-and-reopen-chat", "five-binding-checks", "mobile-dialog-visibility"],
-        "limitations": ["Exact Tavern Helper runtime version was not recorded; no minimum version is claimed."]
+        "viewports": [
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "coverage": [
+          "api-owner-discovery",
+          "same-parameter-settings-save",
+          "two-existing-chats",
+          "reload-and-reopen-chat",
+          "five-binding-checks",
+          "mobile-dialog-visibility"
+        ],
+        "limitations": [
+          "Exact Tavern Helper runtime version was not recorded; no minimum version is claimed."
+        ]
       },
-      "artifacts": { "offline": "candidate-checked", "onlineFixed": "local-module-checked", "onlineLatest": "local-module-checked", "cdn": "pending-after-publication" }
+      "artifacts": {
+        "offline": "candidate-checked",
+        "onlineFixed": "local-module-checked",
+        "onlineLatest": "local-module-checked",
+        "cdn": "pending-after-publication"
+      }
     }
   ]
 }
