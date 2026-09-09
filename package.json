@@ -1,14 +1,14 @@
 {
   "name": "shujuku-scope-binding",
-  "version": "1.7.10",
+  "version": "1.7.11-dev.1",
   "private": true,
   "type": "module",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "huayueshan",
   "engines": { "node": ">=22" },
   "scripts": {
-    "build": "node scripts/build-release.mjs",
-    "test": "node --experimental-vm-modules --test tests/*.test.mjs",
+    "build": "node scripts/build-dev.mjs",
+    "test": "node --test tests/shujuku-binding-scope-availability.test.mjs tests/shujuku-template-restore-lifecycle.test.mjs tests/shujuku-worldbook-sync-lifecycle.test.mjs tests/shujuku-database-discovery.test.mjs",
     "check": "node --check patches/shujuku-scope-binding-patch.js"
   }
 }
