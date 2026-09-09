@@ -5,7 +5,8 @@ import { test } from 'node:test';
 
 const source = await readFile(new URL('../patches/shujuku-scope-binding-patch.js', import.meta.url), 'utf8');
 const names = ['assertBindingScopeAvailable', 'setBindingForScope', 'clearBindingForScope',
-  'getVerificationReport', 'applyBindings', 'saveGlobalTemplateWithoutChat', 'runBindingUiAction'];
+  'getVerificationReport', 'applyBindings', 'saveGlobalTemplateWithoutChat', 'runBindingUiAction',
+  'queueDatabaseUiWorldbookSync', 'queueDatabaseUiWriteTargetSync', 'activateDatabaseUiAllWorldbooks'];
 const code = names.map(name => source.match(new RegExp(`^  (?:async )?function ${name}\\([\\s\\S]*?^  }\\r?$`, 'm'))?.[0]).join('\n');
 function harness() {
   const settings = { currentTemplatePresetName: 'Old' };
@@ -50,13 +51,49 @@ test('missing character/chat fails before binding or clearing writes, with actio
 });
 test('no-chat apply refreshes settings, not tables, and verification is explicitly deferred', async () => {
   const e = harness();
+  const before = JSON.stringify(e.variables);
+  e.mutateDatabaseSettingsViaSave = async () => { throw new Error('No-chat apply must not overwrite database settings'); };
   assert.equal(await e.applyBindings(), true);
+  assert.equal(JSON.stringify(e.variables), before);
   const result = e.getVerificationReport();
   assert.equal(result.deferred, true);
   assert.equal(result.total, 0);
   assert.match(result.message, /进入对话/);
   assert.equal(await e.applyBindings('manual sync', true, false, true, true), false);
   assert.match(e.messages[0], /请先打开/);
+});
+
+test('injected source button inherits Vue scoped attributes from the native control', () => {
+  const picker = source.match(/^  function syncDatabaseUiSourcePicker\([\s\S]*?^  }\r?$/m)?.[0];
+  assert.match(picker, /nativeButton\?\.cloneNode\(true\)/);
+  assert.match(picker, /activeButton\.removeAttribute\('id'\)/);
+  assert.match(picker, /activeButton\.setAttribute\('aria-checked'/);
+  assert.match(picker, /默认绑定已保存/);
+  assert.match(source, /getIdentity\(\)\.chatKey \? '当前对话生效' : '默认绑定'/);
+  assert.match(source, /white-space: normal; text-overflow: clip; overflow: visible/);
+  assert.match(source, /host\.document\.querySelectorAll\('\[data-sjbp-source-active\]'\)/);
+});
+
+test('native UI callbacks ignore missing and switched chats', async () => {
+  const e = harness();
+  e.queueDatabaseUiWorldbookSync('tableWorldbooks');
+  e.queueDatabaseUiWriteTargetSync('A');
+  e.activateDatabaseUiAllWorldbooks('tableWorldbooks');
+  assert.equal(e.writes.length, 0);
+  assert.match(e.messages[0], /请先打开对话/);
+  const callbacks = [];
+  e.identity.chatKey = 'chat-a';
+  e.runtime.databaseUiSyncTimers = {};
+  e.captureBindingContext = () => e.runtime.contextEpoch;
+  e.isBindingContextCurrent = epoch => epoch === e.runtime.contextEpoch;
+  e.clearTimeout = () => {};
+  e.setTimeout = callback => { callbacks.push(callback); return callbacks.length; };
+  e.queueDatabaseUiWorldbookSync('tableWorldbooks');
+  e.queueDatabaseUiWriteTargetSync('A');
+  e.runtime.contextEpoch++;
+  e.identity.chatKey = 'chat-b';
+  for (const callback of callbacks) await callback();
+  assert.equal(e.writes.length, 0);
 });
 test('UI errors are caught and shown instead of becoming unhandled rejections', async () => {
   const e = harness();

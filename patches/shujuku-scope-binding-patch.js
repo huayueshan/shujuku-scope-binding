@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.11-dev.3';
+  const PATCH_VERSION = '1.7.11-dev.4';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -3311,6 +3311,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         runtime.lastError = '';
         refreshUiStatus();
         return true;
+      }).catch(error => {
+        if (error?.code !== 'SJBP_CONTEXT_CHANGED') runtime.lastError = String(error?.message || error);
+        refreshUiStatus();
+        return false;
       });
     }
     const context = captureBindingContext();
@@ -3515,9 +3519,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function queueDatabaseUiWorldbookSync(feature, sourceOverride = '', delay = 180) {
+    if (!getIdentity().chatKey) return;
+    const context = captureBindingContext();
     clearTimeout(runtime.databaseUiSyncTimers[feature]);
     runtime.databaseUiSyncTimers[feature] = setTimeout(async () => {
       try {
+        if (!isBindingContextCurrent(context)) return;
         const value = getRuntimeWorldbookBindingValue(feature, sourceOverride);
         const config = feature === 'tableWorldbooks'
           ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true)
@@ -3535,10 +3542,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function queueDatabaseUiWriteTargetSync(previousTarget) {
+    if (!getIdentity().chatKey) return;
+    const context = captureBindingContext();
     const feature = 'writeWorldbook';
     clearTimeout(runtime.databaseUiSyncTimers[feature]);
     runtime.databaseUiSyncTimers[feature] = setTimeout(async () => {
       try {
+        if (!isBindingContextCurrent(context)) return;
         const config = getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true);
         const page = getVisibleDatabaseRoot()?.querySelector(DB_UI_CONTRACT.tablePage);
         const nextTarget = normalizeInjectionTarget(
@@ -3557,6 +3567,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function activateDatabaseUiAllWorldbooks(feature) {
+    if (!getIdentity().chatKey) {
+      host.toastr?.info?.('请先打开对话；全局默认请在数据库三层绑定中设置');
+      return;
+    }
     const config = feature === 'tableWorldbooks'
       ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey, true)
       : getPlotWorldbookConfig(runtime.settingsRef, true);
@@ -3581,12 +3595,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
     let activeButton = segmented.querySelector('[data-sjbp-source-active]');
     if (!activeButton) {
-      activeButton = host.document.createElement('button');
+      const nativeButton = segmented.querySelector(DB_UI_CONTRACT.segmentedItem);
+      activeButton = nativeButton?.cloneNode(true) || host.document.createElement('button');
       activeButton.type = 'button';
       activeButton.className = 'acu-segmented__item sjbp-db-active-source';
       activeButton.dataset.sjbpSourceActive = feature;
       activeButton.setAttribute('role', 'radio');
-      activeButton.innerHTML = '<span class="acu-segmented__label">酒馆当前全部</span>';
+      activeButton.removeAttribute('id');
+      const label = activeButton.querySelector('.acu-segmented__label');
+      if (label) label.textContent = '酒馆当前全部';
+      else activeButton.textContent = '酒馆当前全部';
       activeButton.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -3613,6 +3631,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         button.setAttribute('aria-checked', 'false');
       }
       segmented.style.setProperty('--acu-segment-index', '2');
+    } else {
+      const config = feature === 'tableWorldbooks'
+        ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey)
+        : getPlotWorldbookConfig(runtime.settingsRef);
+      const index = config?.source === 'manual' ? 1 : 0;
+      nativeButtons.forEach((button, i) => {
+        button.classList.toggle('acu-segmented__item--active', i === index);
+        button.setAttribute('aria-checked', String(i === index));
+      });
+      segmented.style.setProperty('--acu-segment-index', String(index));
     }
 
     let status = picker.querySelector('.sjbp-db-active-status');
@@ -3626,9 +3654,11 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       const originLabel = origin && origin !== 'chat' ? `，继承自${SCOPE_LABELS[origin]}` : '';
       const statusText = isActive
         ? `已生效：酒馆当前使用的全部世界书，共 ${runtime.activeWorldbooks.all.length} 本${originLabel}`
-        : `尚未生效：正在把数据库同步到酒馆当前全部${originLabel}`;
+        : !getIdentity().chatKey
+          ? '默认绑定已保存；进入对话后按该对话的绑定应用'
+          : `尚未生效：正在把数据库同步到酒馆当前全部${originLabel}`;
       if (status.textContent !== statusText) status.textContent = statusText;
-      status.classList.toggle('sjbp-db-active-status--error', !isActive);
+      status.classList.toggle('sjbp-db-active-status--error', !isActive && !!getIdentity().chatKey);
       const hint = page.querySelector(DB_UI_CONTRACT.entryHintStrong);
       if (hint && isActive) {
         const names = runtime.activeWorldbooks.all.join('、') || '无';
@@ -4082,7 +4112,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         <strong>${FEATURE_LABELS[feature]}</strong>
       </div>
       <div class="sjbp-binding-status">
-        <div><b>当前生效</b><span>${effective ? `${escapeHtml(describeBinding(feature, effective))}；${escapeHtml(effectiveReason)}` : escapeHtml(effectiveReason)}</span></div>
+        <div><b>${getIdentity().chatKey ? '当前对话生效' : '默认绑定'}</b><span>${effective ? `${escapeHtml(describeBinding(feature, effective))}；${escapeHtml(effectiveReason)}` : escapeHtml(effectiveReason)}</span></div>
         <div><b>当前范围</b><span>${SCOPE_LABELS[scope]} · ${escapeHtml(selectedScopeStatus)}</span></div>
       </div>
       <div class="sjbp-row-controls${feature === 'tablePreset' && scope === 'chat' ? ' sjbp-native-template-controls' : ''}">
@@ -4801,7 +4831,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         color: #ffb7b0;
       }
       #acu-app-v2 .sjbp-db-source-is-active .acu-v2-wb-source-picker__list { display: none; }
-      #acu-app-v2 .sjbp-db-active-source .acu-segmented__label { font-size: var(--acu-font-size-caption, 11px); }
+      #acu-app-v2 .sjbp-db-active-source .acu-segmented__label { font-size: inherit; }
+      @media (max-width: 680px) {
+        #acu-app-v2 .acu-segmented:has([data-sjbp-source-active]) .acu-segmented__item { min-height: 44px; }
+        #acu-app-v2 .acu-segmented:has([data-sjbp-source-active]) .acu-segmented__label {
+          white-space: normal; text-overflow: clip; overflow: visible; line-height: 1.3;
+        }
+      }
       @media (max-width: 680px) {
         #sjbp-overlay {
           width: 100vw; height: 100dvh; min-height: 100dvh; padding: 6px;
@@ -5133,6 +5169,24 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const overlay = runtime.overlay;
     if (!overlay) return;
     runtime.choiceMenuDisposer?.();
+    for (const button of host.document.querySelectorAll('[data-sjbp-source-active]')) {
+      const bar = button.parentElement;
+      const feature = button.dataset.sjbpSourceActive;
+      const config = feature === 'tableWorldbooks'
+        ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey)
+        : getPlotWorldbookConfig(runtime.settingsRef);
+      button.remove();
+      const buttons = [...bar.querySelectorAll(DB_UI_CONTRACT.segmentedItem)];
+      const index = config?.source === 'manual' ? 1 : 0;
+      buttons.forEach((item, i) => {
+        item.classList.toggle('acu-segmented__item--active', i === index);
+        item.setAttribute('aria-checked', String(i === index));
+      });
+      bar.style.setProperty('--acu-segment-count', String(buttons.length));
+      bar.style.setProperty('--acu-segment-index', String(index));
+      bar.parentElement?.classList.remove('sjbp-db-source-is-active');
+    }
+    host.document.querySelectorAll('.sjbp-db-active-status').forEach(node => node.remove());
     runtime.choiceMenuDisposer = null;
 
     overlay.querySelectorAll('[data-select-trigger]').forEach(trigger => {
