@@ -2,11 +2,11 @@
 
 这是为 SillyTavern 数据库提供全局、角色和对话绑定的数据库二创脚本。依赖酒馆助手与数据库本体，不替代它们。
 
-图文入口：[使用指南网页](index.html)。可直接本地打开，介绍专用世界书写入、当前世界书读取、角色模板自动合并的用途与步骤，配有设置截图、切换对话后的同步提示、桌面与手机全景及兼容性表。网页不提供下载入口。GitHub Pages 尚未启用，维护方式见 [Pages 说明](docs/PAGES.md)。
+图文入口：[使用指南网页](https://huayueshan.github.io/shujuku-scope-binding/)，也可本地打开 [index.html](index.html)。介绍专用世界书写入、当前世界书读取、角色模板自动合并的用途与步骤。网页不提供下载入口，维护方式见 [Pages 说明](docs/PAGES.md)。
 
 ## 当前状态
 
-当前版本为 `1.7.10`。发行仓库为 `huayueshan/shujuku-scope-binding`。
+当前正式版本为 `1.7.11`，本轮实测数据库为 `spv9.2.5`。发行仓库为 `huayueshan/shujuku-scope-binding`。更新内容见[发布说明](RELEASE-NOTES.md)。
 采用 [PolyForm Noncommercial 1.0.0](LICENSE)，非商业用途按许可使用、修改和分发，商业用途不在本许可授权范围内。属于源码公开的非商业许可，不是 OSI 开源许可。
 酒馆助手 JSON 目前仅在类脑发布帖通过 `/下载` 提供，离线、固定在线或 latest 三选一。本仓库不提供安装 JSON 或安装包下载；在线版启动需要连接 jsDelivr。
 
@@ -47,7 +47,7 @@ node --experimental-vm-modules --test tests/*.test.mjs
 生成文件为根目录的“酒馆助手脚本-数据库三层绑定补丁.json”，其中包含完整补丁源码。
 “离线版”指补丁源码随 JSON 携带，不代表酒馆助手和数据库的其他依赖完全无需网络。
 
-兼容性审计覆盖 shujuku spv8.4、spv8.9.2、spv9.1、spv9.1.6、spv9.2.3；本候选实机检查使用 spv9.2.3。
+v1.7.11 的基本测试覆盖 spv8.9.2、spv9.1、spv9.1.6、spv9.2.3 和 spv9.2.5；本轮实机使用 spv9.2.5。spv8.4 保留 v1.7.10 的历史记录，不冒充本轮验收。
 每个发行版本的确切对应关系、验证等级和限制见[兼容性版本表](COMPATIBILITY.md)及[机器可读映射](compatibility.json)。
 发行仓库的测试只包含可独立运行的产品回归，不内置上游源码快照或私人部署测试。
 不宣称已经实测每一个中间版本或未来版本。

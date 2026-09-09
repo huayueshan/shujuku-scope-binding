@@ -1,11 +1,7 @@
 window.releaseData = {
-  "version": "1.7.10",
+  "version": "1.7.11",
   "status": "released",
   "database": [
-    {
-      "tag": "spv8.4",
-      "evidence": "source-contract"
-    },
     {
       "tag": "spv8.9.2",
       "evidence": "source-contract"
@@ -20,6 +16,10 @@ window.releaseData = {
     },
     {
       "tag": "spv9.2.3",
+      "evidence": "source-contract"
+    },
+    {
+      "tag": "spv9.2.5",
       "evidence": "live-basic"
     }
   ]

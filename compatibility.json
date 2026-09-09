@@ -14,16 +14,54 @@
       ],
       "database": [
         {
+          "tag": "spv8.9.2",
+          "commit": "920612f36f62054cccb188e15675b3b9056b3c1e",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.11; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.1",
+          "commit": "d23513fe10872c45d91d476fa614cb434b2c5e10",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.11; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.1.6",
+          "commit": "5f1e96f18e5d072d95f78f7b473773e905b4fc49",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.11; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.2.3",
+          "commit": "c99fa5c6811fbe23aad523091ad972d82a774f86",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.11; no live test on this database version."
+          ]
+        },
+        {
           "tag": "spv9.2.5",
-          "evidence": "basic-tests-and-live",
+          "evidence": "live-basic",
           "limitations": [
             "Synthetic chats without table rows; no AI generation or nonempty worldbook write."
-          ]
+          ],
+          "commit": "5c53f795832b194ec4baa74135e8ebd950122438"
         }
       ],
       "onlineAcceptance": {
-        "releaseLoader": "1.7.10 real CDN load and ten-minute cache verified",
-        "newVersionDiscovery": "Pending jsDelivr indexing; publication authorized before CDN acceptance"
+        "checkedAt": "2026-09-10",
+        "releaseLoader": "1.7.11: uncached version discovery, CDN download, hash and helper runtime passed",
+        "devLoader": "1.7.11-dev.4: uncached version discovery, CDN download, hash and helper runtime passed",
+        "cache": "Repeated load preserved checkedAt within ten minutes",
+        "limitations": [
+          "Temporary runtime execution, not a production installation or upgrade test."
+        ]
       }
     },
     {

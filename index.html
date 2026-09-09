@@ -40,9 +40,9 @@
         <h1 id="page-title">数据库三层绑定补丁</h1>
         <p class="lead">给数据库单独指定写入的世界书，<br>让不同角色使用各自的表格预设。</p>
         <p>这是一个数据库二创脚本。除了分层保存绑定，还能把当前世界书提供给数据库读取，并在新对话中合并全局和角色的表格模板。</p>
-        <p><strong>使用要求：</strong>需要酒馆助手和数据库 spv9.2.3，安装并启用后使用。</p>
+        <p><strong>使用要求：</strong>需要酒馆助手和数据库 spv9.2.5，安装并启用后使用。其他版本见下方兼容性记录。</p>
         <p>以下操作均从“扩展程序 → 数据库三层绑定”进入。</p>
-        <div class="release-line"><strong data-version>v1.7.10</strong></div>
+        <div class="release-line"><strong data-version>v1.7.11</strong> · <a href="RELEASE-NOTES.md">更新说明</a></div>
         <figure class="overview-shot">
           <a href="site/media/desktop.jpg" target="_blank" rel="noopener" aria-label="查看桌面面板原图"><img src="site/media/desktop.jpg" alt="三层绑定桌面面板，展示全局角色对话选择与绑定来源" width="1280" height="720" fetchpriority="high"></a>
           <figcaption>真实隔离酒馆截图，使用虚构“星港向导”角色和演示世界书。</figcaption>
@@ -115,6 +115,8 @@
         </dl>
         <p>选择范围是在查看或编辑这一层，不是在切换当前对话实际使用的配置。选完项目要点击链接图标保存，断链图标用来解除这一层绑定。</p>
         <p>保存后分别看“当前范围”和“当前生效”：前者告诉你这一层绑定了什么，后者告诉你现在真正用的是什么、来自哪里。选择器里的“待保存”只是草稿。</p>
+        <p>数据库 spv9.2.5 本身已按角色保存写入世界书、填表读取世界书和剧情推进世界书配置，同一角色的不同对话会共用。补丁在此基础上增加全局默认和对话优先级；因此，补丁里的“全局”与数据库当前角色的设置不一定相同。</p>
+        <p>没有打开对话时，可以保存全局默认，面板显示“默认绑定”，不会强行改写数据库当前角色的世界书配置。角色操作需要选中角色，对话操作需要打开对话。已有对话保留自己的绑定，不会被新的全局默认覆盖。</p>
         <p class="note">上面的继承规则适用于补丁管理的绑定。普通对话表格模板由数据库管理，角色模板和手动合并的边界见<a href="#templates">上一节</a>。</p>
       </section>
 
@@ -129,9 +131,9 @@
 
       <section id="compatibility">
         <div class="section-label">06 / 版本</div><h2>兼容性</h2>
-        <p>当前基本实测环境：SillyTavern 1.18.0、酒馆助手 4.8.19、数据库 spv9.2.3。</p>
-        <p>旧版本只进行过基本测试，没有进行实机测试；spv9.2.3 还在实际酒馆中测试过。未列出的版本尚未测试。</p>
-        <table><caption>补丁 <span data-version>v1.7.10</span> 的数据库兼容性记录</caption><thead><tr><th scope="col">数据库</th><th scope="col">证据</th></tr></thead><tbody id="compatibility-rows"><tr><td colspan="2">完整记录见<a href="COMPATIBILITY.md">兼容性表</a>。</td></tr></tbody></table>
+        <p>当前基本实测环境：SillyTavern 1.18.0、酒馆助手 4.8.19、数据库 spv9.2.5。</p>
+        <p>本轮 spv9.2.5 进行过基本测试和实机测试；下表其余版本只进行过基本测试。演示对话没有表格行，未测试非空表格写入或真实模型生成。截图沿用早期演示，个别状态文字可能与新版不同。</p>
+        <table><caption>补丁 <span data-version>v1.7.11</span> 的数据库兼容性记录</caption><thead><tr><th scope="col">数据库</th><th scope="col">证据</th></tr></thead><tbody id="compatibility-rows"><tr><td colspan="2">完整记录见<a href="COMPATIBILITY.md">兼容性表</a>。</td></tr></tbody></table>
         <p class="note">基本实机检查未覆盖真实 AI 生成、所有第三方脚本组合和公开升级渠道。详细限制见<a href="docs/ACCEPTANCE.md">验收记录</a>和<a href="compatibility.json">机器可读映射</a>。</p>
       </section>
 
