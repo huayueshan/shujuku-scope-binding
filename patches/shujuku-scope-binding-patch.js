@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.11-dev.2';
+  const PATCH_VERSION = '1.7.11-dev.3';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -112,13 +112,19 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     currentChatKey,
     currentRevision,
     updatedAt,
+    dataState,
+    now = Date.now(),
   }) {
     if (!transition) return true;
     if (!currentChatKey || transition.settingsGeneration !== currentSettingsGeneration
       || transition.chatKey !== currentChatKey) return false;
     if (transition.manualApproved) return true;
+    // A populated recovery callback can arrive before the delay gate. Keep it
+    // as evidence while waiting; do not accept an early empty/clear callback.
     return currentRevision > transition.baselineRevision
-      && updatedAt >= transition.notBefore;
+      && (updatedAt >= transition.notBefore
+        || (dataState === 'ready' && updatedAt >= transition.requestedAt
+          && now >= transition.notBefore));
   }
 
   function isBindingContextCurrentCore(context, current) {
@@ -2574,6 +2580,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       currentChatKey: getIdentity().chatKey,
       currentRevision: runtime.databaseTableRevision,
       updatedAt: runtime.databaseTableUpdatedAt,
+      dataState: runtime.databaseTableDataState,
     });
   }
 
