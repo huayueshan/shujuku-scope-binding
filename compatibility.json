@@ -3,6 +3,67 @@
   "unlistedDatabaseVersions": "unverified",
   "releases": [
     {
+      "patchVersion": "1.7.12",
+      "status": "released",
+      "releaseTag": "v1.7.12",
+      "verifiedAt": "2026-10-09",
+      "sourceSha256": "8c4f0fbe04e18aa75741a51983639e956e8592630fee587c41dd70d2d85c80d7",
+      "liveTestSourceSha256": "9436266b0ec76edc1ba2ccb6f88aced85bc35cd1cb2d98bf8de5aacc5b0955c2",
+      "changesSinceLiveTest": [
+        "Version label changed from 1.7.12-dev.1 to 1.7.12 only."
+      ],
+      "database": [
+        {
+          "tag": "naiv1.2.6",
+          "commit": "33757c141f6e3df768efc50f7eef372ceaedf50a",
+          "evidence": "live-basic",
+          "limitations": [
+            "No AI generation, exhaustive mode combinations or all historical upgrade paths."
+          ]
+        },
+        {
+          "tag": "spv8.9.2",
+          "commit": "920612f36f62054cccb188e15675b3b9056b3c1e",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.12; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.1",
+          "commit": "d23513fe10872c45d91d476fa614cb434b2c5e10",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.12; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.1.6",
+          "commit": "5f1e96f18e5d072d95f78f7b473773e905b4fc49",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.12; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.2.3",
+          "commit": "c99fa5c6811fbe23aad523091ad972d82a774f86",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.12; no live test on this database version."
+          ]
+        },
+        {
+          "tag": "spv9.2.5",
+          "evidence": "source-contract",
+          "limitations": [
+            "Basic tests only for v1.7.12; no live test on this database version."
+          ],
+          "commit": "5c53f795832b194ec4baa74135e8ebd950122438"
+        }
+      ]
+    },
+    {
       "patchVersion": "1.7.11",
       "status": "released",
       "releaseTag": "v1.7.11",

@@ -17,7 +17,8 @@ test('compatibility map matches the exact current source and documents evidence 
   const source = await read('patches/shujuku-scope-binding-patch.js');
   const licenseHeader = `/*\n${await read('NOTICE')}*/\n`;
   assert.ok(source.startsWith(licenseHeader));
-  assert.equal(createHash('sha256').update(source.slice(licenseHeader.length)).digest('hex'), current[0].liveTestSourceSha256,
+  const testedSource = source.replace(`const PATCH_VERSION = '${pkg.version}'`, "const PATCH_VERSION = '1.7.12-dev.1'");
+  assert.equal(createHash('sha256').update(testedSource).digest('hex'), current[0].liveTestSourceSha256,
     'Executable source must match the latest recorded live check; otherwise repeat acceptance.');
   for (const release of map.releases) {
     assert.ok(['candidate', 'released'].includes(release.status));
@@ -27,7 +28,7 @@ test('compatibility map matches the exact current source and documents evidence 
     assert.ok(release.database.length > 0);
     assert.equal(new Set(release.database.map(d => d.tag)).size, release.database.length);
     for (const database of release.database) {
-      assert.match(database.tag, /^spv\d+\.\d+(?:\.\d+)?$/);
+      assert.match(database.tag, /^(?:spv|naiv)\d+\.\d+(?:\.\d+)?$/);
       assert.match(database.commit, /^[a-f0-9]{40}$/);
       assert.ok(['source-contract', 'live-basic', 'unverified', 'incompatible'].includes(database.evidence));
       assert.ok(database.limitations.length > 0);

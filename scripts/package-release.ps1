@@ -30,7 +30,7 @@ function Get-BytesHash([byte[]]$Bytes) {
 }
 if ((Get-BytesHash $contents['LICENSE']) -ne $manifest.licenseSha256 -or
     (Get-BytesHash $contents['NOTICE']) -ne $manifest.noticeSha256) { throw 'License or required notice changed since build.' }
-if (@($manifest.files.PSObject.Properties.Name | Sort-Object) -join ',' -ne 'index.js,offline.json,online-fixed.json,online-latest.json') { throw 'Unexpected manifest artifacts.' }
+if (@($manifest.files.PSObject.Properties.Name | Sort-Object) -join ',' -ne 'index.js,offline.json,online-dev.json,online-fixed.json,online-latest.json') { throw 'Unexpected manifest artifacts.' }
 foreach ($property in $manifest.files.PSObject.Properties) {
     $key = "dist/$($property.Name)"
     if (-not $contents.ContainsKey($key)) { throw 'Manifest artifact is not allowlisted.' }

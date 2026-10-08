@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.11';
+  const PATCH_VERSION = '1.7.12';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -21,23 +21,24 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   });
   const DB_UI_CONTRACT = Object.freeze({
     rootId: 'acu-app-v2',
-    tablePage: '.acu-v2-table-page',
+    tablePage: ':is(.acu-v2-table-page, .acu-v2-form-fill-page)',
     templatePanel: '#form-fill-template-panel',
-    plotPage: '.acu-v2-plot-page',
+    plotPage: ':is(.acu-v2-plot-page, #fill-mode-plot-worldbook-panel)',
     sourcePicker: '.acu-v2-wb-source-picker',
     entryPicker: '.acu-v2-wb-entry-picker',
     entryHintStrong: '.acu-v2-wb-entry-picker__hint strong',
     sidebarItem: '.acu-v2-sidebar__item',
     sidebarActive: '.acu-v2-sidebar__item--active',
     segmentedItem: '.acu-segmented__item',
-    injectionTrigger: '#table-injection-target-panel .acu-select__trigger',
-    injectionOption: '#table-injection-target-panel .acu-select__item',
+    injectionTrigger: ':is(#table-injection-target-panel, #form-fill-injection-target-panel) .acu-select__trigger',
+    injectionOption: ':is(#table-injection-target-panel, #form-fill-injection-target-panel) .acu-select__item',
     menuControls: '#acu-v2-menu-item, #acu-btn-open-editor, button',
     menuItemId: 'acu-v2-menu-item',
     openEditorId: 'acu-btn-open-editor',
     labels: Object.freeze({
       table: '填表规则',
       formFill: '填表工作台',
+      fillMode: '填表模式',
       plot: '剧情推进',
       manual: '手动选择',
       open: '打开数据库',
@@ -431,6 +432,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function usesCharacterWorldbookSettingsCore(settings, sourceTag = '') {
+    // naiv is a new release series, not a downgrade from spv9.
+    if (/^naiv\d+\.\d+(?:\.\d+)?$/i.test(String(sourceTag))) return true;
     const version = String(sourceTag).match(/^spv(\d+)\.(\d+)(?:\.(\d+))?$/i);
     if (version) {
       const major = Number(version[1]);
@@ -439,6 +442,17 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       return major > 9 || (major === 9 && (minor > 2 || (minor === 2 && patch >= 3)));
     }
     return isObject(settings?.plotWorldbookConfigByCharacter);
+  }
+
+  function databaseFeatureNoticeCore(feature, sourceTag) {
+    if (!/^naiv\d+\.\d+(?:\.\d+)?$/i.test(String(sourceTag))) return '';
+    if (feature === 'plotPreset' || feature === 'plotWorldbooks') {
+      return '绑定只保存预设或选书，不改变填表模式。向量模式不执行剧情推进；请在数据库的填表模式中确认。';
+    }
+    if (feature === 'tablePreset') {
+      return '经典模式切换可能恢复启用前的模板。手动合并后若数据库提示恢复模板，请先确认，避免覆盖合并结果。';
+    }
+    return '';
   }
 
   function databaseWorldbookScopeKeyCore(settings, identity, sourceTag = '') {
@@ -947,6 +961,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       isManagedNativePresetBinding,
       materializeWorldbookSource,
       usesCharacterWorldbookSettingsCore,
+      databaseFeatureNoticeCore,
+      DB_UI_CONTRACT,
+      getDatabaseUiWorldbookFeature,
       databaseWorldbookScopeKeyCore,
       syncPlotWorldbookStoreCore,
       applyWorldbookConfigAtomic,
@@ -2375,9 +2392,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (!root) return false;
     const activeButton = root.querySelector(DB_UI_CONTRACT.sidebarActive);
     const activeLabel = String(activeButton?.textContent || '').trim();
-    const feature = activeLabel === DB_UI_CONTRACT.labels.table
+    const feature = [DB_UI_CONTRACT.labels.table, DB_UI_CONTRACT.labels.formFill].includes(activeLabel)
       ? 'tableWorldbooks'
-      : (activeLabel === DB_UI_CONTRACT.labels.plot ? 'plotWorldbooks' : '');
+      : ([DB_UI_CONTRACT.labels.plot, DB_UI_CONTRACT.labels.fillMode].includes(activeLabel) ? 'plotWorldbooks' : '');
     if (!feature || !features.has(feature)) return false;
 
     const originalButton = findDatabaseSidebarButton(root, activeLabel);
@@ -3489,8 +3506,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function getDatabaseUiWorldbookFeature(element) {
     if (!element?.closest) return '';
-    if (element.closest(DB_UI_CONTRACT.tablePage)) return 'tableWorldbooks';
     if (element.closest(DB_UI_CONTRACT.plotPage)) return 'plotWorldbooks';
+    if (element.closest(DB_UI_CONTRACT.tablePage)) return 'tableWorldbooks';
     return '';
   }
 
@@ -3674,8 +3691,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (runtime.databaseUiDriving) return;
     const root = host.document?.getElementById(DB_UI_CONTRACT.rootId);
     if (!root || root.style.display === 'none') return;
-    syncDatabaseUiSourcePicker(root.querySelector(DB_UI_CONTRACT.tablePage), 'tableWorldbooks');
-    syncDatabaseUiSourcePicker(root.querySelector(DB_UI_CONTRACT.plotPage), 'plotWorldbooks');
+    const seen = new Set();
+    for (const feature of ['plotWorldbooks', 'tableWorldbooks']) {
+      const selector = feature === 'plotWorldbooks' ? DB_UI_CONTRACT.plotPage : DB_UI_CONTRACT.tablePage;
+      for (const page of root.querySelectorAll(selector)) {
+        const picker = page.querySelector(DB_UI_CONTRACT.sourcePicker);
+        if (!picker || seen.has(picker) || getDatabaseUiWorldbookFeature(picker) !== feature) continue;
+        seen.add(picker);
+        syncDatabaseUiSourcePicker(page, feature);
+      }
+    }
   }
 
   function installDatabaseUiIntegration() {
@@ -4114,6 +4139,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       <div class="sjbp-binding-status">
         <div><b>${getIdentity().chatKey ? '当前对话生效' : '默认绑定'}</b><span>${effective ? `${escapeHtml(describeBinding(feature, effective))}；${escapeHtml(effectiveReason)}` : escapeHtml(effectiveReason)}</span></div>
         <div><b>当前范围</b><span>${SCOPE_LABELS[scope]} · ${escapeHtml(selectedScopeStatus)}</span></div>
+        ${databaseFeatureNoticeCore(feature, getDatabaseSourceTag()) ? `<div><b>注意</b><span>${escapeHtml(databaseFeatureNoticeCore(feature, getDatabaseSourceTag()))}</span></div>` : ''}
       </div>
       <div class="sjbp-row-controls${feature === 'tablePreset' && scope === 'chat' ? ' sjbp-native-template-controls' : ''}">
         ${buildFeatureControl(feature, scope)}

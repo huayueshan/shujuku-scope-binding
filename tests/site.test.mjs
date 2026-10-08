@@ -30,7 +30,7 @@ test('the static documentation has complete local resources and valid section an
   }
   assert.match(html, /用户设定（人设）/);
   assert.match(html, /数据库二创/);
-  assert.match(html, /使用要求：.*需要酒馆助手和数据库 spv9\.2\.3/);
+  assert.match(html, /使用要求：.*需要酒馆助手和数据库 naiv1\.2\.6/);
   assert.doesNotMatch(html, /本地候选|尚未发布|data-status/);
   assert.match(html, /数据库表格专用世界书/);
   assert.doesNotMatch(html, /avatar（用户角色）|以下说明已对照|源码契约回归|shujuku 配套补丁/);
@@ -45,7 +45,7 @@ test('the static documentation has complete local resources and valid section an
   assert.match(html, /<code>\$4<\/code>/);
   assert.match(html, /<code>\$1<\/code>/);
   const evidence = await read('docs/BEHAVIOR.md');
-  assert.match(evidence, /c99fa5c6811fbe23aad523091ad972d82a774f86/);
+  assert.match(evidence, /33757c141f6e3df768efc50f7eef372ceaedf50a/);
   assert.doesNotMatch(html, /<(?:script|link)[^>]+(?:src|href)="https?:/);
 });
 

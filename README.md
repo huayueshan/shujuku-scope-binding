@@ -12,7 +12,7 @@
 
 ## 当前状态
 
-当前正式版本为 `1.7.11`，本轮实测数据库为 `spv9.2.5`。发行仓库为 `huayueshan/shujuku-scope-binding`。更新内容见[发布说明](RELEASE-NOTES.md)。
+当前正式版本为 `1.7.12`，本轮实测数据库为 `naiv1.2.6`。发行仓库为 `huayueshan/shujuku-scope-binding`。更新内容见[发布说明](RELEASE-NOTES.md)。
 采用 [PolyForm Noncommercial 1.0.0](LICENSE)，非商业用途按许可使用、修改和分发，商业用途不在本许可授权范围内。属于源码公开的非商业许可，不是 OSI 开源许可。
 酒馆助手 JSON 目前仅在类脑发布帖通过 `/下载` 提供，离线、固定在线或 latest 三选一。本仓库不提供安装 JSON 或安装包下载；在线版启动需要连接 jsDelivr。
 
