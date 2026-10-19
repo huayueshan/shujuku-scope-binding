@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.12';
+  const PATCH_VERSION = '1.7.13-dev.1';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -2900,7 +2900,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
   }
 
-  function getVerificationReport() {
+  function getVerificationReport(worldbooksOnly = false) {
     const identity = getIdentity();
     if (!identity.chatKey) {
       return { ok: true, deferred: true, matched: 0, total: 0, features: {},
@@ -2963,6 +2963,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
             === stableStringify(actualSelectedEntries)
         ),
       };
+    }
+
+    if (worldbooksOnly) {
+      const values = Object.values(features);
+      const matched = values.filter(value => value.matches).length;
+      return { ok: matched === values.length, matched, total: values.length, features };
     }
 
     const plotBinding = resolveBinding('plotPreset');
@@ -3605,7 +3611,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     );
   }
 
-  function syncDatabaseUiSourcePicker(page, feature) {
+  function syncDatabaseUiSourcePicker(page, feature, verificationReport) {
     const picker = page?.querySelector(DB_UI_CONTRACT.sourcePicker);
     const segmented = picker?.querySelector('.acu-segmented[aria-label="世界书来源"]');
     if (!picker || !segmented) return;
@@ -3632,7 +3638,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
     const binding = resolveBinding(feature);
     const wantsActive = binding?.value?.source === 'active';
-    const verification = runtime.settingsRef ? getVerificationReport().features?.[feature] : null;
+    const verification = verificationReport?.features?.[feature];
     const isActive = wantsActive && verification?.matches === true;
     const nativeButtons = [...segmented.querySelectorAll(
       `${DB_UI_CONTRACT.segmentedItem}:not([data-sjbp-source-active])`,
@@ -3691,6 +3697,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (runtime.databaseUiDriving) return;
     const root = host.document?.getElementById(DB_UI_CONTRACT.rootId);
     if (!root || root.style.display === 'none') return;
+    let verificationReport;
     const seen = new Set();
     for (const feature of ['plotWorldbooks', 'tableWorldbooks']) {
       const selector = feature === 'plotWorldbooks' ? DB_UI_CONTRACT.plotPage : DB_UI_CONTRACT.tablePage;
@@ -3698,7 +3705,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         const picker = page.querySelector(DB_UI_CONTRACT.sourcePicker);
         if (!picker || seen.has(picker) || getDatabaseUiWorldbookFeature(picker) !== feature) continue;
         seen.add(picker);
-        syncDatabaseUiSourcePicker(page, feature);
+        if (verificationReport === undefined) {
+          verificationReport = runtime.settingsRef ? getVerificationReport(true) : null;
+        }
+        syncDatabaseUiSourcePicker(page, feature, verificationReport);
       }
     }
   }
@@ -3807,20 +3817,48 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       runtime.databaseUiVisible = visible;
     }
 
-    runtime.trackDatabaseUiVisibility = trackDatabaseUiVisibility;
-    runtime.mutationObserver = new MutationObserver(() => {
-      trackDatabaseUiVisibility();
-      clearTimeout(runtime.databaseUiTimer);
-      runtime.databaseUiTimer = setTimeout(syncDatabaseUi, 20);
-    });
-    runtime.mutationObserver.observe(doc.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
+    let observedRoot = null;
+    const panelOptions = {
+      childList: true, subtree: true, attributes: true,
       attributeFilter: ['class', 'style'],
+    };
+    function scheduleUiSync() {
+      if (!runtime.started || runtime.databaseUiTimer) return;
+      runtime.databaseUiTimer = setTimeout(() => {
+        runtime.databaseUiTimer = null;
+        if (!runtime.started) return;
+        trackDatabaseUiVisibility();
+        if (!runtime.databaseUiVisible || runtime.databaseUiDriving) return;
+        // Sync is synchronous. Do not observe our own class/style changes.
+        panelObserver.disconnect();
+        try { syncDatabaseUi(); } finally {
+          if (runtime.started && observedRoot) panelObserver.observe(observedRoot, panelOptions);
+        }
+      }, 100);
+    }
+    const panelObserver = new MutationObserver(scheduleUiSync);
+    function trackRoot() {
+      const root = doc.getElementById(DB_UI_CONTRACT.rootId);
+      if (root === observedRoot) return;
+      panelObserver.disconnect();
+      observedRoot = root;
+      if (root) panelObserver.observe(root, panelOptions);
+      scheduleUiSync();
+    }
+    runtime.trackDatabaseUiVisibility = () => {
+      trackRoot();
+      const wasVisible = runtime.databaseUiVisible;
+      trackDatabaseUiVisibility();
+      if (runtime.databaseUiVisible && !wasVisible) scheduleUiSync();
+    };
+    // Outside the panel only watch structural changes to discover replacement roots.
+    runtime.mutationObserver = new MutationObserver(trackRoot);
+    runtime.mutationObserver.observe(doc.body, { childList: true, subtree: true });
+    runtime.eventDisposers.push(() => {
+      panelObserver.disconnect();
+      observedRoot = null;
     });
-    trackDatabaseUiVisibility();
-    syncDatabaseUi();
+    runtime.trackDatabaseUiVisibility();
   }
 
   function disableLegacyPatch() {
