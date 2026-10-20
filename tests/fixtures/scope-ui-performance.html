@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Binding UI browser regression</title>
+<style>
+body{font:15px system-ui;margin:16px;background:#f4f6f5;color:#202723}main{max-width:800px;margin:auto}h1{font-size:22px}section{border-top:1px solid #bcc9c4;padding:16px 0}button{min-height:44px;font:inherit;border:1px solid #a7b7b0;background:#fff;color:inherit;cursor:pointer;padding:8px}.acu-segmented{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.acu-segmented__item--active{background:#b9e5d5}.sjbp-db-active-status{padding:12px 0}li{margin:10px 0}#result{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+<main><h1>Binding UI browser regression</h1><button id="run">Run tests</button><p id="state">Ready</p>
+<div id="db"><section class="table"><h2>表格读取世界书</h2><div class="picker"><div class="acu-segmented" aria-label="世界书来源"><button class="acu-segmented__item">跟随角色卡</button><button class="acu-segmented__item">手动选择</button></div></div><strong class="hint"></strong></section>
+<section class="plot"><h2>剧情推进世界书</h2><div class="picker"><div class="acu-segmented" aria-label="世界书来源"><button class="acu-segmented__item">跟随角色卡</button><button class="acu-segmented__item">手动选择</button></div></div><strong class="hint"></strong></section></div>
+<pre id="result"></pre><div id="outside"></div></main>
+<script>
+var runtime, context = 1, calls = {sync:0, verify:0, apply:0, clicks:0};
+var host = window;
+var DB_UI_CONTRACT = {rootId:'db',sourcePicker:'.picker',segmentedItem:'.acu-segmented__item',tablePage:'.table',plotPage:'.plot',entryHintStrong:'.hint',entryPicker:'.entries',injectionOption:'.target',menuControls:'#open-db',menuItemId:'open-db',openEditorId:'editor',labels:{open:'Open'}};
+var SCOPE_LABELS = {global:'全局'};
+function fresh(){return {started:true,settingsRef:{},eventDisposers:[],databaseUiOpenTimers:[],activeWorldbooks:{all:['演示全局世界书','演示角色世界书']}}}
+function resolveBinding(){return {value:{source:'active'}}}
+function getChatBindingOrigin(){return 'global'}
+function getIdentity(){return {chatKey:String(context)}}
+function captureBindingContext(){return context}
+function isBindingContextCurrent(value){return value===context}
+function getDatabaseUiWorldbookFeature(node){return node.closest('.table')?'tableWorldbooks':'plotWorldbooks'}
+function getVerificationReport(light){if(!light)throw Error('Unexpected full verification');calls.verify++;return {features:{tableWorldbooks:{matches:true},plotWorldbooks:{matches:true}}}}
+function activateDatabaseUiAllWorldbooks(){calls.clicks++}
+async function applyBindings(){calls.apply++}
+function stop(){runtime.started=false;runtime.mutationObserver?.disconnect();runtime.eventDisposers.forEach(fn=>fn());clearTimeout(runtime.databaseUiTimer);runtime.databaseUiOpenTimers.forEach(clearTimeout)}
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+</script><script src="/functions.js"></script><script>
+const actualSync=syncDatabaseUi;
+syncDatabaseUi=function(){calls.sync++;actualSync()};
+document.querySelector('#run').onclick=async()=>{
+  const results=[]; const check=(name,ok)=>{results.push({name,pass:!!ok});if(!ok)throw Error(name)};
+  document.querySelector('#state').textContent='Running';
+  try{
+    if(runtime)stop();runtime=fresh();calls={sync:0,verify:0,apply:0,clicks:0};
+    installDatabaseUiIntegration();await delay(1100);
+    check('Both source pickers installed',document.querySelectorAll('[data-sjbp-source-active]').length===2);
+    let before=calls.sync;
+    for(let i=0;i<1000;i++)document.querySelector('#outside').className='external-'+i;
+    await delay(350);check('1000 unrelated mutations: no UI refresh',calls.sync===before);
+    before=calls.sync;
+    for(let i=0;i<100;i++)document.querySelector('#db').className='panel-'+i;
+    await delay(350);check('100 panel mutations: one refresh',calls.sync===before+1);
+    before=calls.sync;await delay(450);check('No self-triggered refresh loop',calls.sync===before);
+    let writes=0;const observer=new MutationObserver(records=>writes+=records.length);
+    observer.observe(document.querySelector('#db'),{attributes:true,childList:true,subtree:true,characterData:true});
+    actualSync();await delay(0);observer.disconnect();check('Unchanged sync: zero DOM writes',writes===0);
+    const old=document.querySelector('[data-sjbp-source-active]');stop();old.click();check('Stopped instance button is inert',calls.clicks===0);
+    runtime=fresh();installDatabaseUiIntegration();await delay(1100);
+    const current=document.querySelector('[data-sjbp-source-active]');current.click();
+    check('Hot reload replaces handler exactly once',old!==current&&calls.clicks===1&&document.querySelectorAll('[data-sjbp-source-active]').length===2);
+    let root=document.querySelector('#db');root.style.display='none';await delay(200);before=calls.sync;root.className='hidden-change';await delay(200);check('Hidden panel skips refresh',calls.sync===before);
+    const applies=calls.apply;root.style.display='block';await delay(200);context++;await delay(800);check('Delayed verification cancelled on chat switch',calls.apply===applies);
+    before=calls.sync;const replacement=root.cloneNode(true);root.replaceWith(replacement);await delay(300);check('Replacement panel is reconnected',calls.sync===before+1);
+    const count=calls.apply;stop();await delay(800);check('Stopped runtime cancels delayed verification',calls.apply===count);
+    document.querySelector('#state').textContent='PASS: '+results.length+' checks';
+  }catch(error){document.querySelector('#state').textContent='FAIL: '+error.message}
+  finally{if(runtime)stop();window.testResults={results,calls};document.querySelector('#result').textContent=results.map(r=>(r.pass?'PASS ':'FAIL ')+r.name).join('\n')}
+};
+</script></html>

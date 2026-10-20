@@ -67,7 +67,8 @@ test('injected source button inherits Vue scoped attributes from the native cont
   const picker = source.match(/^  function syncDatabaseUiSourcePicker\([\s\S]*?^  }\r?$/m)?.[0];
   assert.match(picker, /nativeButton\?\.cloneNode\(true\)/);
   assert.match(picker, /activeButton\.removeAttribute\('id'\)/);
-  assert.match(picker, /activeButton\.setAttribute\('aria-checked'/);
+  assert.match(picker, /setChecked\(activeButton, isActive\)/);
+  assert.match(picker, /button\.setAttribute\('aria-checked', value\)/);
   assert.match(picker, /默认绑定已保存/);
   assert.match(source, /getIdentity\(\)\.chatKey \? '当前对话生效' : '默认绑定'/);
   assert.match(source, /white-space: normal; text-overflow: clip; overflow: visible/);

@@ -13,11 +13,13 @@ function harness() {
   const e = {
     runtime: { started: true, eventDisposers: [], databaseUiOpenTimers: [] },
     DB_UI_CONTRACT: { rootId: 'db' },
-    root: null, syncs: 0, checks: 0,
+    root: null, syncs: 0, checks: 0, context: 1, applies: 0,
+    captureBindingContext: () => e.context,
+    isBindingContextCurrent: context => context === e.context,
     setTimeout: fn => { timers.set(++nextTimer, fn); return nextTimer; },
     clearTimeout: id => timers.delete(id),
     syncDatabaseUi: () => { e.syncs++; assert.equal(observers[0].connected, false); },
-    applyBindings: async () => {},
+    applyBindings: async () => { e.applies++; },
     MutationObserver: class {
       constructor(callback) { this.callback = callback; observers.push(this); }
       observe(target, options) { this.target = target; this.options = options; this.connected = true; }
@@ -103,4 +105,74 @@ test('worldbook-only verification never calls table export or preset APIs', () =
   assert.throws(() => e.getVerificationReport(), /Preset\/table API must not be called/);
   assert.match(extract('syncDatabaseUi'), /getVerificationReport\(true\)/);
   assert.doesNotMatch(extract('syncDatabaseUiSourcePicker'), /getVerificationReport\(/);
+});
+
+test('delayed panel verification does not follow a switched context or stopped runtime', () => {
+  for (const stop of [false, true]) {
+    const e = harness();
+    e.root = e.makeRoot();
+    e.observers[1].callback(); e.flush();
+    assert.equal(e.timers.size, 1);
+    if (stop) e.runtime.started = false;
+    else e.context++;
+    e.flush();
+    assert.equal(e.applies, 0);
+  }
+});
+
+test('hot reload replaces stale button handlers and unchanged sync performs no DOM writes', () => {
+  let writes = 0, clicks = 0, activeButton;
+  const button = () => {
+    const attrs = new Map(), classes = new Set();
+    return {
+      dataset: {}, className: '', textContent: '',
+      classList: { toggle(name, enabled) {
+        if (classes.has(name) === enabled) return;
+        writes++; enabled ? classes.add(name) : classes.delete(name);
+      } },
+      setAttribute(k, v) { attrs.set(k, v); writes++; },
+      getAttribute: k => attrs.get(k) ?? null,
+      removeAttribute(k) { attrs.delete(k); },
+      querySelector: () => null,
+      addEventListener(_, handler) { this.click = handler; },
+      cloneNode: () => button(),
+      remove() { if (activeButton === this) activeButton = null; writes++; },
+    };
+  };
+  const nativeButtons = [button(), button()];
+  const styles = new Map();
+  const segmented = {
+    style: {
+      getPropertyValue: k => styles.get(k) || '',
+      setProperty(k, v) { styles.set(k, v); writes++; },
+    },
+    querySelector: selector => selector === '[data-sjbp-source-active]' ? activeButton : nativeButtons[0],
+    querySelectorAll: () => nativeButtons,
+    appendChild(value) { activeButton = value; writes++; },
+  };
+  const picker = { classList: button().classList, querySelector: s => s.startsWith('.acu-segmented') ? segmented : null };
+  const page = { querySelector: () => picker };
+  const e = {
+    runtime: { started: true, settingsRef: {} },
+    DB_UI_CONTRACT: { sourcePicker: '.picker', segmentedItem: '.item' },
+    resolveBinding: () => null,
+    getIdentity: () => ({ chatKey: 'chat' }),
+    getTableWorldbookConfig: () => ({ source: 'manual' }),
+    activateDatabaseUiAllWorldbooks: () => { clicks++; },
+  };
+  vm.createContext(e); vm.runInContext(extract('syncDatabaseUiSourcePicker'), e);
+  const sync = () => e.syncDatabaseUiSourcePicker(page, 'tableWorldbooks', null);
+  sync();
+  const old = activeButton;
+  writes = 0;
+  sync();
+  assert.equal(writes, 0);
+  e.runtime.started = false;
+  old.click({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(clicks, 0);
+  e.runtime = { started: true, settingsRef: {} };
+  sync();
+  assert.notEqual(activeButton, old);
+  activeButton.click({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(clicks, 1);
 });

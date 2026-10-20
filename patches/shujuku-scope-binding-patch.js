@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.13-dev.1';
+  const PATCH_VERSION = '1.7.13-dev.2';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -3617,6 +3617,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (!picker || !segmented) return;
 
     let activeButton = segmented.querySelector('[data-sjbp-source-active]');
+    runtime.databaseUiOwnedButtons ||= new WeakSet();
+    // Existing DOM can outlive its script iframe. Do not reuse old listeners.
+    if (activeButton && !runtime.databaseUiOwnedButtons.has(activeButton)) {
+      activeButton.remove();
+      activeButton = null;
+    }
     if (!activeButton) {
       const nativeButton = segmented.querySelector(DB_UI_CONTRACT.segmentedItem);
       activeButton = nativeButton?.cloneNode(true) || host.document.createElement('button');
@@ -3631,10 +3637,20 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       activeButton.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
+        if (!runtime.started) return;
         activateDatabaseUiAllWorldbooks(feature);
       });
+      runtime.databaseUiOwnedButtons.add(activeButton);
       segmented.appendChild(activeButton);
     }
+
+    const setStyle = (name, value) => {
+      if (segmented.style.getPropertyValue(name) !== value) segmented.style.setProperty(name, value);
+    };
+    const setChecked = (button, checked) => {
+      const value = String(checked);
+      if (button.getAttribute('aria-checked') !== value) button.setAttribute('aria-checked', value);
+    };
 
     const binding = resolveBinding(feature);
     const wantsActive = binding?.value?.source === 'active';
@@ -3643,17 +3659,17 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const nativeButtons = [...segmented.querySelectorAll(
       `${DB_UI_CONTRACT.segmentedItem}:not([data-sjbp-source-active])`,
     )];
-    segmented.style.setProperty('--acu-segment-count', '3');
+    setStyle('--acu-segment-count', '3');
     activeButton.classList.toggle('acu-segmented__item--active', isActive);
-    activeButton.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    setChecked(activeButton, isActive);
     picker.classList.toggle('sjbp-db-source-is-active', isActive);
 
     if (isActive) {
       for (const button of nativeButtons) {
-        button.classList.remove('acu-segmented__item--active');
-        button.setAttribute('aria-checked', 'false');
+        button.classList.toggle('acu-segmented__item--active', false);
+        setChecked(button, false);
       }
-      segmented.style.setProperty('--acu-segment-index', '2');
+      setStyle('--acu-segment-index', '2');
     } else {
       const config = feature === 'tableWorldbooks'
         ? getTableWorldbookConfig(runtime.settingsRef, getIdentity().chatKey)
@@ -3661,9 +3677,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       const index = config?.source === 'manual' ? 1 : 0;
       nativeButtons.forEach((button, i) => {
         button.classList.toggle('acu-segmented__item--active', i === index);
-        button.setAttribute('aria-checked', String(i === index));
+        setChecked(button, i === index);
       });
-      segmented.style.setProperty('--acu-segment-index', String(index));
+      setStyle('--acu-segment-index', String(index));
     }
 
     let status = picker.querySelector('.sjbp-db-active-status');
@@ -3777,9 +3793,11 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
     function scheduleDatabaseUiOpenReapply() {
       clearDatabaseUiOpenTimers();
+      const context = captureBindingContext();
       const delays = [700];
       delays.forEach((delay, index) => {
         const timer = setTimeout(() => {
+          if (!runtime.started || !isBindingContextCurrent(context)) return;
           const root = doc.getElementById(DB_UI_CONTRACT.rootId);
           const stillVisible = !!root
             && host.getComputedStyle(root).display !== 'none'
