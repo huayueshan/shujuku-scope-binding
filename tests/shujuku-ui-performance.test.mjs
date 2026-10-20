@@ -93,7 +93,7 @@ test('worldbook-only verification never calls table export or preset APIs', () =
     getTableWorldbookConfig: () => ({}), getPlotWorldbookConfig: () => ({}),
     getVisibleDatabaseRoot: () => null, readDatabaseUiWorldbookConfig: () => null,
     readDatabaseUiInjectionTarget: () => null, resolveBinding: () => null,
-    normalizeInjectionTarget: x => x || 'character', uniqueNames: x => x || [],
+    normalizeInjectionTarget: x => x || 'character', uniqueWorldbookNames: x => x || [],
     isObject: x => x && typeof x === 'object', clone: structuredClone,
     stableStringify: JSON.stringify, sortedNames: x => x,
     getDatabaseApi: () => { throw new Error('Preset/table API must not be called'); },

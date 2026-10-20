@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.13-dev.2';
+  const PATCH_VERSION = '1.7.13-dev.3';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -25,6 +25,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     templatePanel: '#form-fill-template-panel',
     plotPage: ':is(.acu-v2-plot-page, #fill-mode-plot-worldbook-panel)',
     sourcePicker: '.acu-v2-wb-source-picker',
+    sourceItemLabel: '.acu-v2-wb-source-picker__item-label',
+    selectLabel: '.acu-select__label',
     entryPicker: '.acu-v2-wb-entry-picker',
     entryHintStrong: '.acu-v2-wb-entry-picker__hint strong',
     sidebarItem: '.acu-v2-sidebar__item',
@@ -97,6 +99,23 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return output;
   }
 
+  function worldbookName(value) {
+    const name = String(value || '');
+    return name.trim() ? name : '';
+  }
+
+  function uniqueWorldbookNames(values) {
+    const seen = new Set();
+    const output = [];
+    for (const value of values || []) {
+      const name = worldbookName(value);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      output.push(name);
+    }
+    return output;
+  }
+
   function classifyDatabaseTableDataCore(tableData) {
     return isObject(tableData) && Object.keys(tableData).length > 0
       ? 'ready'
@@ -135,7 +154,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function sortedNames(values) {
-    return uniqueNames(values).sort();
+    return uniqueWorldbookNames(values).sort();
   }
 
   function cleanChatName(value) {
@@ -198,7 +217,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (source !== 'manual') {
       return { source, manualSelection: [], enabledEntries: {} };
     }
-    const manualSelection = uniqueNames(value?.manualSelection);
+    const manualSelection = uniqueWorldbookNames(value?.manualSelection);
     const enabledEntries = {};
     for (const name of manualSelection) {
       if (Array.isArray(value?.enabledEntries?.[name])) {
@@ -476,9 +495,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const source = String(binding?.source || 'character');
     output.source = source === 'active' ? 'manual' : (source === 'manual' ? 'manual' : 'character');
     if (source === 'active') {
-      output.manualSelection = uniqueNames(activeNames);
+      output.manualSelection = uniqueWorldbookNames(activeNames);
     } else if (source === 'manual') {
-      output.manualSelection = uniqueNames(binding?.manualSelection);
+      output.manualSelection = uniqueWorldbookNames(binding?.manualSelection);
     } else if (!Array.isArray(output.manualSelection)) {
       output.manualSelection = [];
     }
@@ -492,7 +511,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (!isObject(config) || !isObject(desired)) return false;
     const nextSource = desired.source === 'manual' ? 'manual' : 'character';
     const nextSelection = nextSource === 'manual'
-      ? uniqueNames(desired.manualSelection)
+      ? uniqueWorldbookNames(desired.manualSelection)
       : [];
     const nextEnabledEntries = isObject(desired.enabledEntries)
       ? clone(desired.enabledEntries)
@@ -742,7 +761,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       : {};
     const groups = [];
 
-    for (const bookName of uniqueNames(bookNames)) {
+    for (const bookName of uniqueWorldbookNames(bookNames)) {
       const snapshotByUid = new Map(
         (Array.isArray(snapshotBooks[bookName]) ? snapshotBooks[bookName] : [])
           .filter(item => item && String(item.uid ?? '') !== '')
@@ -794,13 +813,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function normalizeActiveSourcesCore(raw) {
-    const global = uniqueNames(raw?.global);
-    const primary = String(raw?.characterPrimary || '').trim();
-    const additional = uniqueNames(raw?.characterAdditional);
-    const chat = uniqueNames(Array.isArray(raw?.chat) ? raw.chat : [raw?.chat]);
-    const persona = String(raw?.persona || '').trim();
-    const all = uniqueNames([...global, primary, ...additional, ...chat, persona]);
-    const available = uniqueNames([...(raw?.available || []), ...all]);
+    const global = uniqueWorldbookNames(raw?.global);
+    const primary = worldbookName(raw?.characterPrimary);
+    const additional = uniqueWorldbookNames(raw?.characterAdditional);
+    const chat = uniqueWorldbookNames(Array.isArray(raw?.chat) ? raw.chat : [raw?.chat]);
+    const persona = worldbookName(raw?.persona);
+    const all = uniqueWorldbookNames([...global, primary, ...additional, ...chat, persona]);
+    const available = uniqueWorldbookNames([...(raw?.available || []), ...all]);
     return {
       global,
       characterPrimary: primary,
@@ -944,6 +963,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   if (testTarget) {
     Object.assign(testTarget, {
       uniqueNames,
+      worldbookName,
+      uniqueWorldbookNames,
+      normalizeInjectionTarget,
       sortedNames,
       cleanChatName,
       resolveCharacterIdentityCore,
@@ -2197,7 +2219,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     try {
       if (typeof getPersona === 'function') {
         const currentPersona = getPersona('current');
-        persona = String(currentPersona?.lorebook || '').trim();
+        persona = worldbookName(currentPersona?.lorebook);
         personaAvatar = String(currentPersona?.avatar_id || '').trim();
       } else if (typeof getCurrentPersonaId === 'function') {
         personaAvatar = String(getCurrentPersonaId() || '').trim();
@@ -2243,7 +2265,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       global,
       characterPrimary: character.primary,
       characterAdditional: character.additional,
-      chat: uniqueNames([...chat, ...(supplemental.chat || [])]),
+      chat: uniqueWorldbookNames([...chat, ...(supplemental.chat || [])]),
       persona: supplemental.persona || '',
       personaAvatar: supplemental.personaAvatar || '',
       available,
@@ -2306,7 +2328,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function normalizeInjectionTarget(value) {
-    return String(value || '').trim() || 'character';
+    return worldbookName(value) || 'character';
   }
 
   function getVisibleDatabaseRoot() {
@@ -2336,14 +2358,17 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       ) ? 'manual' : 'character',
       manualSelection: [...picker.querySelectorAll('[role="checkbox"]')]
         .filter(button => button.getAttribute('aria-checked') === 'true')
-        .map(button => String(button.textContent || '').trim()),
+        .map(button => worldbookName(
+          (button.querySelector(DB_UI_CONTRACT.sourceItemLabel) || button).textContent,
+        )),
     };
   }
 
   function readDatabaseUiInjectionTarget(page) {
-    const text = String(
-      page?.querySelector(DB_UI_CONTRACT.injectionTrigger)?.textContent || '',
-    ).trim();
+    const trigger = page?.querySelector(DB_UI_CONTRACT.injectionTrigger);
+    const text = worldbookName(
+      (trigger?.querySelector(DB_UI_CONTRACT.selectLabel) || trigger)?.textContent,
+    );
     if (!text) return '';
     return text === DB_UI_CONTRACT.labels.characterTarget ? 'character' : text;
   }
@@ -2937,12 +2962,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         : config;
       const expected = {
         source: materialized?.source === 'manual' ? 'manual' : 'character',
-        manualSelection: uniqueNames(materialized?.manualSelection),
+        manualSelection: uniqueWorldbookNames(materialized?.manualSelection),
         enabledEntries: isObject(materialized?.enabledEntries) ? clone(materialized.enabledEntries) : {},
       };
       const actual = {
         source: (uiConfig || config)?.source === 'manual' ? 'manual' : 'character',
-        manualSelection: uniqueNames((uiConfig || config)?.manualSelection),
+        manualSelection: uniqueWorldbookNames((uiConfig || config)?.manualSelection),
         enabledEntries: isObject(config?.enabledEntries) ? clone(config.enabledEntries) : {},
       };
       const actualSelectedEntries = Object.fromEntries(
@@ -3911,7 +3936,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (feature === 'tableWorldbooks' || feature === 'plotWorldbooks') {
       if (value?.source === 'active') return `酒馆当前全部 (${runtime.activeWorldbooks.all.length})`;
       if (value?.source === 'manual') {
-        const books = uniqueNames(value.manualSelection);
+        const books = uniqueWorldbookNames(value.manualSelection);
         const entryCount = books.reduce((total, name) => (
           total + (Array.isArray(value.enabledEntries?.[name]) ? value.enabledEntries[name].length : 0)
         ), 0);
@@ -4229,7 +4254,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function buildActiveWorldbookSummary() {
     const active = runtime.activeWorldbooks;
-    const characterNames = uniqueNames([active.characterPrimary, ...active.characterAdditional]);
+    const characterNames = uniqueWorldbookNames([active.characterPrimary, ...active.characterAdditional]);
     return `<section class="sjbp-active">
       <div><strong>酒馆当前全部</strong><span>${active.all.length} 本</span></div>
       <dl>
@@ -4284,7 +4309,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   async function loadManualEditorEntries(bookNames) {
     const editor = runtime.manualEditor;
     if (!editor) return;
-    const pending = uniqueNames(bookNames).filter(name => !Object.prototype.hasOwnProperty.call(editor.entriesByBook, name));
+    const pending = uniqueWorldbookNames(bookNames).filter(name => !Object.prototype.hasOwnProperty.call(editor.entriesByBook, name));
     if (!pending.length) {
       editor.loading = false;
       rebuildManualEditorGroups();
@@ -4316,7 +4341,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const scope = getEditScope(feature, state);
     const current = getControlValue(feature, scope);
     const fallbackConfig = getDatabaseControlValue(feature);
-    const bookNames = uniqueNames(
+    const bookNames = uniqueWorldbookNames(
       current?.source === 'manual'
         ? current.manualSelection
         : fallbackConfig?.manualSelection,
@@ -5392,8 +5417,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       input.addEventListener('change', () => {
         const name = input.dataset.manualBook;
         if (input.checked) {
-          editor.bookNames = uniqueNames([...editor.bookNames, name]);
-          editor.expandedBooks = uniqueNames([...editor.expandedBooks, name]);
+          editor.bookNames = uniqueWorldbookNames([...editor.bookNames, name]);
+          editor.expandedBooks = uniqueWorldbookNames([...editor.expandedBooks, name]);
           void loadManualEditorEntries([name]);
         } else {
           editor.bookNames = editor.bookNames.filter(item => item !== name);
@@ -5408,7 +5433,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         const name = button.dataset.toggleEntryGroup;
         editor.expandedBooks = editor.expandedBooks.includes(name)
           ? editor.expandedBooks.filter(item => item !== name)
-          : uniqueNames([...editor.expandedBooks, name]);
+          : uniqueWorldbookNames([...editor.expandedBooks, name]);
         rebuildManualEditorGroups();
         renderDialog();
       });
