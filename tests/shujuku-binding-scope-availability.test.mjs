@@ -12,13 +12,14 @@ function harness() {
   const settings = { currentTemplatePresetName: 'Old' };
   const key = 'shujuku_v120_profile_v1____default____settings';
   const e = {
-    SCOPE_IDS: ['global', 'character', 'chat'], NATIVE_PRESET_FEATURES: new Set(['tablePreset', 'plotPreset']),
+    SCOPE_IDS: ['global', 'character', 'chat'], NATIVE_PRESET_FEATURES: new Set(['tablePreset', 'plotPreset', 'apiPreset']),
     identity: { chatKey: '', characterStable: false }, writes: [], messages: [],
     runtime: { contextEpoch: 0, databaseProfileKey: key, settingsRef: settings },
     getIdentity: () => e.identity,
     setBinding: (...args) => e.writes.push(args), clearBinding: (...args) => e.writes.push(args),
     setNativePresetBinding: (...args) => e.writes.push(args), clearNativePresetBinding: (...args) => e.writes.push(args),
     captureDatabaseSettings: async () => settings, refreshUiStatus: () => {},
+    supportsActiveApiBindingCore: () => false,
     host: { toastr: { error: x => e.messages.push(x), info: x => e.messages.push(x) } },
     isObject: x => !!x && typeof x === 'object' && !Array.isArray(x),
     parseStoredJson: x => JSON.parse(x), DB_STORAGE_CONTRACT: { settingsNamespace: 'db' },
@@ -31,12 +32,12 @@ function harness() {
   vm.createContext(e); vm.runInContext(code, e);
   return e;
 }
-test('global saves require neither a character nor a chat for all five features', async () => {
+test('global saves require neither a character nor a chat for all six features', async () => {
   const e = harness();
-  for (const feature of ['writeWorldbook', 'tableWorldbooks', 'plotWorldbooks', 'plotPreset', 'tablePreset']) {
+  for (const feature of ['writeWorldbook', 'tableWorldbooks', 'plotWorldbooks', 'plotPreset', 'tablePreset', 'apiPreset']) {
     await e.setBindingForScope(feature, 'global', 'New');
   }
-  assert.equal(e.writes.length, 5);
+  assert.equal(e.writes.length, 6);
 });
 test('missing character/chat fails before binding or clearing writes, with actionable errors', async () => {
   const e = harness();

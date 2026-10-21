@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.13-dev.3';
+  const PATCH_VERSION = '1.7.13-dev.4';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -55,6 +55,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     'plotWorldbooks',
     'plotPreset',
     'tablePreset',
+    'apiPreset',
   ];
   const SCOPE_IDS = ['global', 'character', 'chat'];
   const SCOPE_LABELS = { global: '全局', character: '角色', chat: '对话' };
@@ -64,8 +65,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     plotWorldbooks: '剧情推进世界书',
     plotPreset: '剧情推进预设',
     tablePreset: '表格预设',
+    apiPreset: '活动 API 预设',
   };
-  const NATIVE_PRESET_FEATURES = new Set(['plotPreset', 'tablePreset']);
+  const NATIVE_PRESET_FEATURES = new Set(['plotPreset', 'tablePreset', 'apiPreset']);
   const WORLDBOOK_FEATURES = ['writeWorldbook', 'tableWorldbooks', 'plotWorldbooks'];
   const PAGE_BLOCKED_WORLDBOOK_KEYWORDS = [
     '规则', '思维链', 'cot', 'MVU', 'mvu', '变量', '状态',
@@ -228,6 +230,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function normalizePatchOwnedBindingCore(feature, value) {
+    if (feature === 'apiPreset') {
+      if (typeof value !== 'string') throw new Error('API 绑定只能保存预设名称');
+      return value.trim();
+    }
     if (feature === 'tableWorldbooks' || feature === 'plotWorldbooks') {
       return normalizeWorldbookBindingCore(value);
     }
@@ -959,9 +965,66 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return version && Number(version.split('.')[0]) >= 8 ? `spv${version}` : '';
   }
 
+  // naiv1.3 has no functional public API-preset setter. Keep this private
+  // compatibility contract separate; never copy connection fields into bindings.
+  const ACTIVE_API_FIELDS = ['defaultApiPresetName', 'apiPresetBindingsByChat', 'apiMode', 'apiConfig', 'tavernProfile'];
+
+  function supportsActiveApiBindingCore(settings) {
+    return isObject(settings) && Array.isArray(settings.apiPresets)
+      && typeof settings.defaultApiPresetName === 'string'
+      && isObject(settings.apiPresetBindingsByChat) && isObject(settings.apiConfig)
+      && typeof settings.apiMode === 'string' && typeof settings.tavernProfile === 'string';
+  }
+
+  function activeApiFieldsCore(settings) {
+    return Object.fromEntries(ACTIVE_API_FIELDS.map(key => [key, clone(settings[key])]));
+  }
+
+  function findActiveApiPresetCore(settings, name) {
+    const matches = settings.apiPresets.filter(item => item?.name === name);
+    if (matches.length !== 1 || !isObject(matches[0].apiConfig)
+      || !['custom', 'tavern'].includes(matches[0].apiMode)
+      || typeof matches[0].tavernProfile !== 'string') {
+      throw new Error('API 预设不存在、名称重复或格式不兼容，请在数据库中检查预设');
+    }
+    return matches[0];
+  }
+
+  function planActiveApiBindingCore(settings, characterName, chatKey, edit = null, now = Date.now()) {
+    if (!supportsActiveApiBindingCore(settings)) throw new Error('当前数据库不支持活动 API 绑定');
+    const fields = activeApiFieldsCore(settings);
+    if (edit) {
+      if (!['global', 'chat'].includes(edit.scope)) throw new Error('无效 API 绑定范围');
+      if (edit.scope === 'chat' && (!chatKey || chatKey === 'unknown_chat')) throw new Error('请先打开一条对话');
+      if (typeof edit.name !== 'string') throw new Error('API 绑定只能保存预设名称');
+      const name = edit.name.trim();
+      if (name) findActiveApiPresetCore(settings, name);
+      if (edit.scope === 'global') fields.defaultApiPresetName = name;
+      else if (!name) delete fields.apiPresetBindingsByChat[chatKey];
+      else if (fields.apiPresetBindingsByChat[chatKey]?.presetName !== name) {
+        Object.defineProperty(fields.apiPresetBindingsByChat, chatKey, {
+          value: { presetName: name, updatedAt: now }, enumerable: true, writable: true, configurable: true,
+        });
+      }
+    }
+    const bound = chatKey && chatKey !== 'unknown_chat' ? fields.apiPresetBindingsByChat[chatKey]?.presetName : '';
+    const name = String(bound || characterName || fields.defaultApiPresetName || '').trim();
+    if (name) {
+      const preset = findActiveApiPresetCore(settings, name);
+      fields.apiMode = preset.apiMode;
+      fields.apiConfig = clone(preset.apiConfig);
+      fields.tavernProfile = preset.tavernProfile;
+    }
+    return { name, fields, changed: stableStringify(fields) !== stableStringify(activeApiFieldsCore(settings)) };
+  }
+
   const testTarget = typeof globalThis !== 'undefined' ? globalThis[TEST_KEY] : null;
   if (testTarget) {
     Object.assign(testTarget, {
+      supportsActiveApiBindingCore,
+      activeApiFieldsCore,
+      planActiveApiBindingCore,
+      normalizePatchOwnedBindingCore,
       uniqueNames,
       worldbookName,
       uniqueWorldbookNames,
@@ -1665,6 +1728,10 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function getNativeGlobalPresetBinding(feature) {
     if (!runtime.settingsRef) return null;
+    if (feature === 'apiPreset') {
+      const name = runtime.settingsRef.defaultApiPresetName;
+      return typeof name === 'string' && name ? { scope: 'global', value: name, native: true } : null;
+    }
     if (feature === 'plotPreset') {
       return {
         scope: 'global',
@@ -1694,6 +1761,11 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function getNativeChatPresetBinding(feature) {
     const identity = getIdentity();
+    if (feature === 'apiPreset') {
+      const name = identity.chatKey && identity.chatKey !== 'unknown_chat'
+        ? runtime.settingsRef?.apiPresetBindingsByChat?.[identity.chatKey]?.presetName : '';
+      return typeof name === 'string' && name ? { scope: 'chat', value: name, native: true } : null;
+    }
     if (feature === 'plotPreset') {
       const raw = runtime.settingsRef?.plotPresetBindings?.[identity.chatKey];
       if (!isObject(raw)) return null;
@@ -1829,6 +1901,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   async function setNativePresetBinding(feature, scope, value) {
     assertBindingScopeAvailable(scope);
+    if (feature === 'apiPreset') return applyActiveApiBinding({ scope, name: value });
     const initialEpoch = runtime.contextEpoch;
     const initiallyWithoutChat = !getIdentity().chatKey;
     const api = getDatabaseApi();
@@ -1880,6 +1953,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   async function clearNativePresetBinding(feature, scope) {
     assertBindingScopeAvailable(scope);
+    if (feature === 'apiPreset') return applyActiveApiBinding({ scope, name: '' });
     if (scope === 'global') {
       return setNativePresetBinding(feature, 'global', '');
     }
@@ -1901,6 +1975,19 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   async function setBindingForScope(feature, scope, value) {
     assertBindingScopeAvailable(scope);
+    if (feature === 'apiPreset' && scope === 'character') {
+      const epoch = runtime.contextEpoch;
+      const characterKey = getIdentity().characterKey;
+      const name = normalizePatchOwnedBindingCore(feature, value);
+      if (!name) throw new Error('请选择 API 预设；解除绑定请点击取消链接');
+      await captureDatabaseSettings(true);
+      if (epoch !== runtime.contextEpoch || characterKey !== getIdentity().characterKey) {
+        throw new Error('角色已切换，请重新选择 API 预设');
+      }
+      if (!supportsActiveApiBindingCore(runtime.settingsRef)) throw new Error('当前数据库不支持活动 API 绑定');
+      findActiveApiPresetCore(runtime.settingsRef, name);
+      assertBindingScopeAvailable(scope);
+    }
     if (NATIVE_PRESET_FEATURES.has(feature) && scope !== 'character') {
       return setNativePresetBinding(feature, scope, value);
     }
@@ -2126,7 +2213,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return runtime.settingsRef;
   }
 
-  async function mutateDatabaseSettingsViaSave(mutator) {
+  async function mutateDatabaseSettingsViaSave(mutator, requireSuccess = false) {
     const api = getDatabaseApi();
     const frame = findDatabaseFrame();
     if (!api || !frame?.contentWindow) throw new Error('数据库运行时尚不可用');
@@ -2145,7 +2232,12 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     try {
       captured = await captureObjectViaStringify(
         frame.contentWindow.JSON,
-        () => api.setUpdateConfigParams(api.getUpdateConfigParams()),
+        async () => {
+          const result = await api.setUpdateConfigParams(api.getUpdateConfigParams());
+          if (requireSuccess && (result === false || result?.success === false || result?.ok === false)) {
+            throw new Error('数据库拒绝保存');
+          }
+        },
         looksLikeDatabaseSettings,
         80,
         settings => {
@@ -2166,6 +2258,80 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return { settings: captured, changed: mutationChanged };
   }
 
+  async function applyActiveApiBinding(edit = null) {
+    // Serialize native-save capture independently of the broader worldbook queue.
+    const epoch = runtime.contextEpoch;
+    const identity = getIdentity();
+    const guard = () => {
+      const current = getIdentity();
+      if (epoch !== runtime.contextEpoch || current.chatKey !== identity.chatKey
+        || current.characterKey !== identity.characterKey) {
+        const error = new Error('角色或对话已切换，取消 API 绑定');
+        error.code = 'SJBP_CONTEXT_CHANGED';
+        throw error;
+      }
+    };
+    const work = async () => {
+      guard();
+      if (!readState().enabled) {
+        if (edit) throw new Error('请先启用三层绑定，再切换活动 API');
+        return false;
+      }
+      const settings = await captureDatabaseSettings(true);
+      guard();
+      if (!supportsActiveApiBindingCore(settings)) {
+        if (edit || getCharacterBindings()?.apiPreset) throw new Error('当前数据库不支持活动 API 绑定');
+        return false;
+      }
+      const characterName = getCharacterBindings()?.apiPreset || '';
+      const plan = planActiveApiBindingCore(settings, characterName, identity.chatKey, edit);
+      if (!plan.changed && !plan.name && !edit) return true;
+      const cachedLive = runtime.activeApiLiveSettings;
+      if (!plan.changed && cachedLive?.epoch === epoch
+        && cachedLive.generation === runtime.settingsGeneration
+        && supportsActiveApiBindingCore(cachedLive.settings)
+        && !planActiveApiBindingCore(cachedLive.settings, characterName, identity.chatKey, edit).changed) return true;
+      let target = null;
+      let before = null;
+      let applied = null;
+      try {
+        await mutateDatabaseSettingsViaSave(live => {
+          guard();
+          // Re-plan against the live object: stored settings can lag behind native UI edits.
+          const next = planActiveApiBindingCore(live, characterName, identity.chatKey, edit);
+          target = live;
+          before = activeApiFieldsCore(live);
+          applied = next.fields;
+          if (!next.changed) return false;
+          Object.assign(live, next.fields);
+          return true;
+        }, true);
+        guard();
+        const persisted = readStoredDatabaseSettings();
+        if (!applied || !supportsActiveApiBindingCore(persisted)
+          || stableStringify(activeApiFieldsCore(persisted)) !== stableStringify(applied)
+          || stableStringify(activeApiFieldsCore(target)) !== stableStringify(applied)) {
+          throw new Error('API 绑定保存核验失败，请稍后重试');
+        }
+        runtime.settingsRef = persisted;
+        runtime.activeApiLiveSettings = { settings: target, epoch, generation: runtime.settingsGeneration };
+        return true;
+      } catch (error) {
+        // Do not undo a newer native edit or overwrite another chat's connection.
+        if (target && before && applied && epoch === runtime.contextEpoch
+          && stableStringify(activeApiFieldsCore(target)) === stableStringify(applied)) {
+          Object.assign(target, before);
+        }
+        if (error?.code === 'SJBP_CONTEXT_CHANGED') throw error;
+        // Native failures may contain request details; never forward them to diagnostics.
+        throw new Error('活动 API 绑定未完成，请检查预设是否存在并重试');
+      }
+    };
+    const queued = (runtime.activeApiQueue || Promise.resolve()).catch(() => {}).then(work);
+    runtime.activeApiQueue = queued.catch(() => {});
+    return queued;
+  }
+
   async function migrateLegacyPresetBindings() {
     const legacyGlobal = {};
     const legacyChat = {};
@@ -2175,6 +2341,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const state = readState();
     const profile = getProfileState(state, false);
     for (const feature of NATIVE_PRESET_FEATURES) {
+      if (feature === 'apiPreset') continue;
       if (Object.prototype.hasOwnProperty.call(profile.global, feature)) {
         legacyGlobal[feature] = clone(profile.global[feature]);
         delete profile.global[feature];
@@ -2186,6 +2353,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     const root = readChatPatchRoot();
     const chatProfile = getChatProfile(root, false);
     for (const feature of NATIVE_PRESET_FEATURES) {
+      if (feature === 'apiPreset') continue;
       // Keep obsolete patch-owned table bindings for recovery, but never replay them into the database.
       if (feature === 'tablePreset') continue;
       if (Object.prototype.hasOwnProperty.call(chatProfile.bindings, feature)) {
@@ -2996,6 +3164,22 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       return { ok: matched === values.length, matched, total: values.length, features };
     }
 
+    if (supportsActiveApiBindingCore(runtime.settingsRef)) {
+      let matches = false;
+      let name = '';
+      try {
+        const plan = planActiveApiBindingCore(runtime.settingsRef, getCharacterBindings()?.apiPreset || '', identity.chatKey);
+        name = plan.name;
+        const live = runtime.activeApiLiveSettings;
+        matches = !plan.changed && (!name || (live?.epoch === runtime.contextEpoch
+          && live.generation === runtime.settingsGeneration
+          && stableStringify(activeApiFieldsCore(live.settings)) === stableStringify(plan.fields)));
+      } catch (_) {
+        name = String(resolveBinding('apiPreset')?.value || '');
+      }
+      features.apiPreset = { expected: name, matches };
+    }
+
     const plotBinding = resolveBinding('plotPreset');
     const expectedPlotPreset = String(plotBinding?.value || '');
     const actualPlotPreset = String(getDatabaseApi()?.getCurrentPlotPreset?.() || '');
@@ -3292,6 +3476,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       const settings = await captureDatabaseSettings(true);
       assertBindingContextCurrent(context);
       if (!settings) throw new Error('尚未连接兼容的数据库运行时');
+      await applyActiveApiBinding();
+      assertBindingContextCurrent(context);
       await refreshActiveWorldbooks();
       assertBindingContextCurrent(context);
       ensureWorldbookChatBindings();
@@ -3349,13 +3535,15 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         return Promise.resolve(false);
       }
       const epoch = runtime.contextEpoch;
-      return captureDatabaseSettings(true).then(settings => {
+      return captureDatabaseSettings(true).then(async settings => {
         if (runtime.contextEpoch !== epoch || getIdentity().chatKey) return false;
         if (!settings) {
           runtime.lastError ||= '数据库设置尚未就绪，请稍后重试';
           refreshUiStatus();
           return false;
         }
+        if (supportsActiveApiBindingCore(settings)) await applyActiveApiBinding();
+        if (runtime.contextEpoch !== epoch || getIdentity().chatKey) return false;
         runtime.lastError = '';
         refreshUiStatus();
         return true;
@@ -3993,6 +4181,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   function getDatabaseControlValue(feature) {
     const identity = getIdentity();
     const tableConfig = getTableWorldbookConfig(runtime.settingsRef, identity.chatKey, false) || {};
+    if (feature === 'apiPreset') return String(resolveBinding(feature)?.value || '');
     if (feature === 'writeWorldbook') return String(tableConfig.injectionTarget || 'character');
     if (feature === 'tableWorldbooks') {
       return {
@@ -4092,6 +4281,15 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function buildFeatureControl(feature, scope) {
+    if (feature === 'apiPreset') {
+      if (!supportsActiveApiBindingCore(runtime.settingsRef)) return '<span class="sjbp-muted">当前数据库不支持活动 API 绑定</span>';
+      const current = getControlValue(feature, scope);
+      const names = uniqueNames([...(runtime.settingsRef.apiPresets || []).map(item => item?.name), current]);
+      return buildSelectControl(feature, [
+        { value: '', label: scope === 'global' ? '不指定默认 API' : '请选择 API 预设' },
+        ...names.map(name => ({ value: name, label: name })),
+      ], current, true);
+    }
     if (feature === 'tablePreset' && scope === 'chat') {
       return '<button type="button" class="sjbp-command-button" data-open-native-template><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i><span>在数据库中管理对话模板</span></button>';
     }
@@ -4189,7 +4387,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     } else {
       effectiveReason = '当前对话绑定';
     }
-    if (!getIdentity().chatKey) effectiveReason = '已保存的默认绑定；打开对话后按优先级应用';
+    if (!getIdentity().chatKey) effectiveReason = feature === 'apiPreset'
+      ? '按角色、全局优先级应用连接；任务单独指定的 API 保持不变'
+      : '已保存的默认绑定；打开对话后按优先级应用';
     let selectedScopeStatus;
     if (scopeBinding !== undefined) {
       selectedScopeStatus = `已绑定：${describeFeatureValue(feature, scopeBinding)}`;
@@ -5125,6 +5325,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function captureSelectedFeature(feature, requestedScope = '') {
+    const actionEpoch = runtime.contextEpoch;
     assertBindingScopeAvailable(SCOPE_IDS.includes(requestedScope) ? requestedScope : getEditScope(feature));
     if (!runtime.settingsRef && !await captureDatabaseSettings(false)) {
       runtime.lastError = '尚未连接数据库运行时，不能建立绑定';
@@ -5162,6 +5363,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     }
 
     await setBindingForScope(feature, scope, value);
+    if (feature === 'apiPreset' && actionEpoch !== runtime.contextEpoch) return;
     clearControlDraft(feature, scope);
     runtime.lastApplySignature = '';
     await applyBindings(
@@ -5171,7 +5373,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       false,
       feature === 'writeWorldbook' && !!getIdentity().chatKey,
     );
-    if (isPatchOwnedBindingScope(feature, scope)) {
+    if (feature === 'apiPreset' && actionEpoch !== runtime.contextEpoch) return;
+    if (isPatchOwnedBindingScope(feature, scope) && feature !== 'apiPreset') {
       await setBindingForScope(feature, scope, value);
       if (!bindingAtScopeMatches(feature, scope, value)) {
         runtime.lastError = `${SCOPE_LABELS[scope]}${FEATURE_LABELS[feature]}绑定未能持久化`;
@@ -5182,6 +5385,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function clearSelectedFeature(feature, requestedScope = '') {
+    const actionEpoch = runtime.contextEpoch;
     const scope = SCOPE_IDS.includes(requestedScope) ? requestedScope : getEditScope(feature);
     assertBindingScopeAvailable(scope);
     const scopeBinding = getBindingAtScope(feature, scope);
@@ -5192,6 +5396,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       return;
     }
     await clearBindingForScope(feature, scope);
+    if (feature === 'apiPreset' && actionEpoch !== runtime.contextEpoch) return;
     clearControlDraft(feature, scope);
     runtime.lastApplySignature = '';
     await applyBindings(
@@ -5201,7 +5406,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       false,
       feature === 'writeWorldbook' && !!getIdentity().chatKey,
     );
-    if (isPatchOwnedBindingScope(feature, scope)) {
+    if (feature === 'apiPreset' && actionEpoch !== runtime.contextEpoch) return;
+    if (isPatchOwnedBindingScope(feature, scope) && feature !== 'apiPreset') {
       await clearBindingForScope(feature, scope);
       if (getBindingAtScope(feature, scope) !== undefined) {
         runtime.lastError = `${SCOPE_LABELS[scope]}${FEATURE_LABELS[feature]}解绑未能持久化`;

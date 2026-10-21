@@ -96,6 +96,7 @@ test('worldbook-only verification never calls table export or preset APIs', () =
     normalizeInjectionTarget: x => x || 'character', uniqueWorldbookNames: x => x || [],
     isObject: x => x && typeof x === 'object', clone: structuredClone,
     stableStringify: JSON.stringify, sortedNames: x => x,
+    supportsActiveApiBindingCore: () => false,
     getDatabaseApi: () => { throw new Error('Preset/table API must not be called'); },
   };
   vm.createContext(e); vm.runInContext(extract('getVerificationReport'), e);

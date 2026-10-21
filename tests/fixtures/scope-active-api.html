@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>活动 API 绑定模拟验收</title><link rel="stylesheet" href="/style.css">
+<style>body{font:15px system-ui;color:#ddd;background:#222;margin:0}button{font:inherit;color:inherit;background:#26343a;border:1px solid #71868d;min-height:44px}#status{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px}h1{font-size:20px;padding:12px;margin:0}</style>
+<div id="sjbp-overlay"><div class="sjbp-dialog"><h1>活动 API 绑定模拟验收</h1><button id="run">运行模拟测试</button><div id="row"></div><div id="status">准备就绪</div></div></div>
+<script>
+var host=window, scope='global', draft, writes=0, character={}, identity={chatKey:'',characterKey:''};
+var runtime={contextEpoch:0,settingsGeneration:1,settingsRef:null,activeWorldbooks:{all:[]}};
+var SCOPE_IDS=['global','character','chat'], SCOPE_LABELS={global:'全局',character:'角色',chat:'对话'};
+var FEATURE_LABELS={apiPreset:'活动 API 预设'}, NATIVE_PRESET_FEATURES=new Set(['apiPreset']);
+var live,stored, fakeJSON={stringify:JSON.stringify};
+function clone(x){return JSON.parse(JSON.stringify(x))}function stableStringify(x){return JSON.stringify(x)}
+function isObject(x){return x&&typeof x==='object'&&!Array.isArray(x)}
+function getIdentity(){return identity}function getCharacterBindings(){return character}
+function readState(){return {enabled:true}}
+function captureDatabaseSettings(){runtime.settingsRef=clone(stored);return Promise.resolve(runtime.settingsRef)}
+function readStoredDatabaseSettings(){return clone(stored)}
+function findDatabaseFrame(){return {contentWindow:{JSON:fakeJSON}}}
+function looksLikeDatabaseSettings(x){return x===live}
+var api={getUpdateConfigParams:()=>({autoUpdateFrequency:1}),setUpdateConfigParams:()=>{stored=JSON.parse(fakeJSON.stringify(live));writes++;return true}};
+function getDatabaseApi(){return api}
+function getEditScope(){return scope}function getManagedPreset(){return null}
+function getChatBindingOrigin(){return ''}function getDatabaseSourceTag(){return 'naiv1.3'}
+function getBindingAtScope(f,s){return s==='global'?live.defaultApiPresetName||undefined:s==='character'?character.apiPreset:live.apiPresetBindingsByChat[identity.chatKey]?.presetName}
+function resolveBinding(){for(const s of ['chat','character','global']){const v=getBindingAtScope('',s);if(v)return {scope:s,value:v,native:s!=='character'}}return null}
+function getControlDraft(){return draft}function getDatabaseControlValue(){return resolveBinding()?.value||''}
+function getControlValue(){return draft??getBindingAtScope('',scope)??getDatabaseControlValue()}
+function describeBinding(f,b){return b?.value||'未指定'}function describeFeatureValue(f,v){return v||'未指定'}
+function reset(){writes=0;scope='global';draft=undefined;character={};identity={chatKey:'',characterKey:''};runtime.contextEpoch++;
+live={defaultApiPresetName:'新预设',apiPresetBindingsByChat:{},apiMode:'custom',tavernProfile:'',apiConfig:{model:'old'},apiPresets:[{name:'旧预设',apiMode:'custom',tavernProfile:'',apiConfig:{model:'old'}},{name:'新预设',apiMode:'custom',tavernProfile:'',apiConfig:{model:'new'}},{name:'角色专用 API 预设（长名称布局检查）',apiMode:'tavern',tavernProfile:'Demo',apiConfig:{model:'role'}}],taskOverride:'任务自己的 API'};stored=clone(live);runtime.settingsRef=clone(stored)}
+function render(){runtime.settingsRef=clone(stored);document.querySelector('#row').innerHTML=buildFeatureRow('apiPreset',{})}
+</script><script src="/runtime.js"></script><script>
+reset();render();
+document.querySelector('#row').onclick=async event=>{
+try{const target=event.target.closest('button');if(!target)return;
+if(target.dataset.scope){scope=target.dataset.scope;draft=undefined;render()}
+if(target.dataset.selectTrigger){const menu=document.querySelector('[data-select-menu]');menu.hidden=!menu.hidden;if(!menu.hidden)positionChoiceMenu(target,menu)}
+if(target.dataset.selectOption){draft=target.dataset.value;render()}
+if(target.dataset.bind){const name=getControlValue();if(scope==='character'){if(!identity.characterKey)throw Error('请先选择角色');character.apiPreset=name;await applyActiveApiBinding()}else await applyActiveApiBinding({scope,name});draft=undefined;render();document.querySelector('#status').textContent='实际连接：'+live.apiConfig.model}
+if(target.dataset.clear){if(scope==='character'){delete character.apiPreset;await applyActiveApiBinding()}else await applyActiveApiBinding({scope,name:''});draft=undefined;render()}
+}catch(error){document.querySelector('#status').textContent=error.message}};
+document.querySelector('#run').onclick=async()=>{
+const results=[];const check=(name,ok)=>{results.push({name,pass:!!ok});if(!ok)throw Error(name)};
+try{reset();await applyActiveApiBinding();check('默认显示新预设时，实际请求参数也为新预设',live.apiConfig.model==='new');
+const count=writes;for(let i=0;i<50;i++)await applyActiveApiBinding();check('50 次重复应用没有重复保存',writes===count);
+identity={chatKey:'chat-one',characterKey:'role-one'};character.apiPreset=live.apiPresets[2].name;runtime.contextEpoch++;await applyActiveApiBinding();check('角色优先于全局',live.apiConfig.model==='role');
+await applyActiveApiBinding({scope:'chat',name:'旧预设'});check('对话优先于角色',live.apiConfig.model==='old');
+identity={chatKey:'chat-two',characterKey:''};character={};runtime.contextEpoch++;await applyActiveApiBinding();check('另一条对话恢复全局实际连接',live.apiConfig.model==='new');
+identity={chatKey:'chat-one',characterKey:''};runtime.contextEpoch++;live=clone(stored);await applyActiveApiBinding();check('重新加载后保留对话绑定',live.apiConfig.model==='old');
+check('独立任务 API 未被覆盖',live.taskOverride==='任务自己的 API');check('没有伪造 unknown_chat 绑定',!live.apiPresetBindingsByChat.unknown_chat);
+scope='global';draft=undefined;render();document.querySelector('#status').textContent='PASS '+results.length+' 项\n'+results.map(x=>x.name).join('\n');
+}catch(error){document.querySelector('#status').textContent='FAIL '+error.message}
+window.testResults=results;
+};
+</script></html>
