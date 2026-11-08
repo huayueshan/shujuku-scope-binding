@@ -1,3 +1,15 @@
+import { readFileSync } from 'node:fs';
+
+// Bundle the pinned library: HTTP installations must not fetch another dependency.
+const sha256Source = readFileSync(new URL('./vendor/js-sha256/sha256.js', import.meta.url), 'utf8');
+const sha256License = readFileSync(new URL('./vendor/js-sha256/LICENSE.txt', import.meta.url), 'utf8');
+export const fallbackSha256Source = `function (bytes) {
+  const window = {}, process = undefined, module = undefined, define = undefined;
+  /* ${sha256License} */
+  ${sha256Source}
+  return window.sha256(bytes);
+}`;
+
 // Accept only our fixed release grammar, never arbitrary refs or URLs.
 export function selectVersion(versions, channel) {
   if (!['release', 'dev'].includes(channel)) throw new Error('Unknown channel');
@@ -53,8 +65,15 @@ export function createOnlineLoader(channel, notice = '') {
     const expected = manifest.files?.['index.js']?.sha256;
     if (!/^[a-f0-9]{64}$/.test(expected || '')) throw new Error('Invalid manifest hash');
     const source = await (await request(base + 'index.js')).text();
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
-    const actual = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
+    const bytes = new TextEncoder().encode(source);
+    let actual;
+    if (typeof globalThis.crypto?.subtle?.digest === 'function') {
+      const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+      actual = Array.from(new Uint8Array(digest), n => n.toString(16).padStart(2, '0')).join('');
+    } else {
+      const sha256 = ${fallbackSha256Source};
+      actual = sha256(bytes);
+    }
     if (actual !== expected) throw new Error('CDN version mismatch; reload to retry');
     moduleUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     await import(moduleUrl);

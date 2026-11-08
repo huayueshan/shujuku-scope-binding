@@ -3,6 +3,26 @@
   "unlistedDatabaseVersions": "unverified",
   "releases": [
     {
+      "patchVersion": "1.7.13-dev.5",
+      "status": "development",
+      "releaseTag": "v1.7.13-dev.5",
+      "verifiedAt": "2026-11-08",
+      "sourceSha256": "e8e54585a436838d22365326ee21dcb2a756d4f4b7524dd455dee57ad541e2e8",
+      "database": [
+        {
+          "tag": "naiv1.3.6",
+          "commit": "0814f5a2fba925315654d66f4e534cecb98bce63",
+          "evidence": "source-contract-and-simulation",
+          "limitations": [
+            "Source checks and binding simulations only; no full database live test or model request.",
+            "Mobile checks use a binding simulation, not a full SillyTavern instance."
+          ]
+        }
+      ],
+      "tests": { "maintenance": 220, "publicBinding": 85, "loader": 11, "browserSimulation": 8 },
+      "artifacts": { "cdn": "pending-after-publication" }
+    },
+    {
       "patchVersion": "1.7.12",
       "status": "released",
       "releaseTag": "v1.7.12",

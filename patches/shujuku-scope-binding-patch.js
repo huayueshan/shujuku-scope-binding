@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.13-dev.4';
+  const PATCH_VERSION = '1.7.13-dev.5';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -2213,7 +2213,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     return runtime.settingsRef;
   }
 
-  async function mutateDatabaseSettingsViaSave(mutator, requireSuccess = false) {
+  async function mutateDatabaseSettingsViaSave(mutator, requireSuccess = true) {
     const api = getDatabaseApi();
     const frame = findDatabaseFrame();
     if (!api || !frame?.contentWindow) throw new Error('数据库运行时尚不可用');
@@ -2234,8 +2234,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
         frame.contentWindow.JSON,
         async () => {
           const result = await api.setUpdateConfigParams(api.getUpdateConfigParams());
-          if (requireSuccess && (result === false || result?.success === false || result?.ok === false)) {
-            throw new Error('数据库拒绝保存');
+          if (requireSuccess && (result === false || result?.success === false || result?.ok === false || result?.saved === false)) {
+            throw new Error('数据库拒绝保存，请等待配置加载完成后重试');
           }
         },
         looksLikeDatabaseSettings,

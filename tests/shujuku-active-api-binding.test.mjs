@@ -225,3 +225,67 @@ test('disabled patch does not change the database active API', async () => {
   assert.equal(e.writes, 0);
   assert.equal(e.live.apiConfig.model, 'old');
 });
+
+test('naiv1.3.6 preset tool transport false and future fields survive all scope switches', async () => {
+  const e = harness();
+  e.live.apiPresets[0].apiConfig.contextToolTransportEnabled = true;
+  e.live.apiPresets[1].apiConfig.contextToolTransportEnabled = false;
+  e.live.apiPresets[2].apiConfig.contextToolTransportEnabled = true;
+  e.live.takeoverEnabledGlobal = false;
+  e.stored = copy(e.live);
+  await e.applyActiveApiBinding();
+  assert.equal(e.live.apiConfig.contextToolTransportEnabled, false);
+  assert.deepEqual(copy(e.live.apiConfig.futureOption), { keep: true });
+  e.identity.chatKey = 'test-chat';
+  e.character.apiPreset = 'A';
+  await e.applyActiveApiBinding();
+  assert.equal(e.live.apiConfig.contextToolTransportEnabled, true);
+  await e.applyActiveApiBinding({ scope: 'chat', name: 'B' });
+  assert.equal(e.live.apiConfig.contextToolTransportEnabled, false);
+  e.live.apiPresets[1].apiConfig.contextToolTransportEnabled = true;
+  e.stored = copy(e.live);
+  await e.applyActiveApiBinding();
+  assert.equal(e.live.apiConfig.contextToolTransportEnabled, true);
+  assert.equal(e.live.takeoverEnabledGlobal, false);
+});
+
+test('every save-adapter caller rejects explicit failure by default, including settings_loading', async () => {
+  for (const result of [false, { ok: false }, { success: false }, { saved: false, code: 'settings_loading' }]) {
+    const e = harness();
+    const json = { stringify: JSON.stringify };
+    const original = json.stringify;
+    Object.assign(e, {
+      getDatabaseApi: () => ({ getUpdateConfigParams: () => ({}), setUpdateConfigParams: () => {
+        json.stringify(e.live);
+        return result;
+      } }),
+      findDatabaseFrame: () => ({ contentWindow: { JSON: json } }),
+      looksLikeDatabaseSettings: x => x === e.live, setTimeout,
+    });
+    vm.runInContext(source.match(/^  async function mutateDatabaseSettingsViaSave\([\s\S]*?^  }\r?$/m)[0], e);
+    await assert.rejects(e.mutateDatabaseSettingsViaSave(() => false), /拒绝保存/);
+    assert.equal(json.stringify, original);
+    assert.equal(e.runtime.settingsRef, null);
+  }
+});
+
+test('loading gate before serialization prevents mutations and later ready state can retry', async () => {
+  const e = harness();
+  const json = { stringify: JSON.stringify };
+  let ready = false;
+  const api = { getUpdateConfigParams: () => ({}), setUpdateConfigParams: () => {
+    if (!ready) return false;
+    e.stored = JSON.parse(json.stringify(e.live)); return true;
+  } };
+  Object.assign(e, { getDatabaseApi: () => api, findDatabaseFrame: () => ({ contentWindow: { JSON: json } }),
+    looksLikeDatabaseSettings: x => x === e.live, setTimeout });
+  vm.runInContext(source.match(/^  async function mutateDatabaseSettingsViaSave\([\s\S]*?^  }\r?$/m)[0], e);
+  const before = copy(e.live);
+  await assert.rejects(e.applyActiveApiBinding({ scope: 'global', name: 'C' }), /未完成/);
+  assert.deepEqual(copy(e.live), before);
+  assert.deepEqual(e.stored, before);
+  ready = true;
+  await e.applyActiveApiBinding({ scope: 'global', name: 'C' });
+  assert.equal(e.live.apiConfig.model, 'chat');
+  assert.equal(e.stored.apiConfig.model, 'chat');
+});
