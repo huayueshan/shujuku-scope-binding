@@ -27,6 +27,7 @@ function harness() {
     readState: () => ({ enabled: !e.disabled }),
     captureDatabaseSettings: async () => copy(e.stored),
     readStoredDatabaseSettings: () => copy(e.stored),
+    scheduleDatabaseSettingsConfirmation: () => {},
     mutateDatabaseSettingsViaSave: async fn => {
       if (e.beforeSave) e.beforeSave();
       fn(e.live);

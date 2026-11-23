@@ -3,6 +3,24 @@
   "unlistedDatabaseVersions": "unverified",
   "releases": [
     {
+      "patchVersion": "1.7.13-dev.6",
+      "status": "development",
+      "releaseTag": "v1.7.13-dev.6",
+      "verifiedAt": "2026-11-24",
+      "sourceSha256": "e16d5466b279a64b880ebe0b5703af7977977bd87920900a51e01f6dda84256d",
+      "database": [{
+        "tag": "naiv1.3.8",
+        "commit": "597e1ef3d0d118ff079521eee626a18508096b6a",
+        "evidence": "source-review-and-simulation",
+        "limitations": [
+          "No full database live test or model request.",
+          "Server persistence failures use simulated responses; mobile checks use a binding harness.",
+          "Readback covers database settings, not chat files, character cards or patch variables."
+        ]
+      }],
+      "tests": { "maintenance": 230, "publicBinding": 95, "browserSimulation": 8 }
+    },
+    {
       "patchVersion": "1.7.13-dev.5",
       "status": "development",
       "releaseTag": "v1.7.13-dev.5",

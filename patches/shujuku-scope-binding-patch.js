@@ -7,7 +7,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   'use strict';
 
   const PATCH_NAME = '数据库三层绑定补丁';
-  const PATCH_VERSION = '1.7.13-dev.5';
+  const PATCH_VERSION = '1.7.13-dev.6';
   const PATCH_NAMESPACE = 'shujuku_scope_binding_patch_v1';
   const CHAT_META_KEY = 'ShujukuScopeBindingPatchV1';
   const CHARACTER_META_KEY = 'ShujukuScopeBindingCharacterV1';
@@ -838,6 +838,85 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     };
   }
 
+  function databaseSettingsSnapshotCore(namespace, profileKey) {
+    if (!isObject(namespace) || !profileKey) return null;
+    const keys = [DB_STORAGE_CONTRACT.globalMetaKey, profileKey, profileKey.replace(/__settings$/, '__template')];
+    if (!Object.prototype.hasOwnProperty.call(namespace, profileKey)) return null;
+    return Object.fromEntries(keys.filter(key => Object.prototype.hasOwnProperty.call(namespace, key))
+      .map(key => [key, clone(namespace[key])]));
+  }
+
+  function databaseSettingsResponseCore(payload) {
+    const settings = typeof payload?.settings === 'string'
+      ? JSON.parse(payload.settings) : payload?.settings;
+    const namespace = settings?.extension_settings?.__userscripts?.[DB_STORAGE_CONTRACT.settingsNamespace];
+    if (!isObject(namespace)) throw new Error('服务器未返回数据库配置');
+    return namespace;
+  }
+
+  // Read-only, bounded verification. Never retry a write or roll back live settings here.
+  function createSettingsConfirmationCore({ read, changed, schedule = setTimeout, unschedule = clearTimeout }) {
+    let revision = 0;
+    let timer = null;
+    let controller = null;
+    let watchdog = null;
+    let fingerprint = '';
+    let state = 'idle';
+    const publish = value => { state = value; changed(value); };
+    const cancel = () => {
+      revision++;
+      unschedule(timer);
+      unschedule(watchdog);
+      timer = null;
+      controller?.abort();
+      controller = null;
+      fingerprint = '';
+      publish('idle');
+    };
+    const start = snapshot => {
+      if (!snapshot) { cancel(); publish('unconfirmable'); return; }
+      const next = stableStringify(snapshot);
+      if (next === fingerprint) return;
+      cancel();
+      fingerprint = next;
+      const expected = clone(snapshot);
+      const current = revision;
+      publish('pending');
+      const attempt = async index => {
+        if (revision !== current) return;
+        const request = new AbortController();
+        controller = request;
+        let timeout;
+        try {
+          const actual = await Promise.race([
+            read(request.signal),
+            new Promise((_, reject) => {
+              timeout = schedule(() => { request.abort(); reject(new Error('timeout')); }, 5000);
+              watchdog = timeout;
+            }),
+          ]);
+          if (revision !== current) return;
+          if (Object.keys(expected).every(key => Object.prototype.hasOwnProperty.call(actual, key)
+            && stableStringify(actual[key]) === stableStringify(expected[key]))) {
+            publish('confirmed');
+            return;
+          }
+        } catch (_) {
+          // Do not disclose server response bodies, API credentials or configuration values.
+        } finally {
+          unschedule(timeout);
+          if (watchdog === timeout) watchdog = null;
+          if (controller === request) controller = null;
+        }
+        if (revision !== current) return;
+        if (index === 0) timer = schedule(() => { void attempt(1); }, 6000);
+        else publish('unconfirmed');
+      };
+      timer = schedule(() => { void attempt(0); }, 1800);
+    };
+    return { start, cancel, getState: () => state };
+  }
+
   async function captureObjectViaStringify(
     jsonObject,
     trigger,
@@ -1068,6 +1147,9 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       buildWorldbookEntryGroupsCore,
       normalizeActiveSourcesCore,
       captureObjectViaStringify,
+      databaseSettingsSnapshotCore,
+      databaseSettingsResponseCore,
+      createSettingsConfirmationCore,
       needsNativePresetRestoreCore,
       tableTemplateMatchesRuntimeCore,
       normalizePresetApiResultCore,
@@ -1116,6 +1198,8 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     contextEpoch: 0,
     contextController: new AbortController(),
     databaseProfileKey: '',
+    settingsConfirmation: null,
+    settingsPersistence: 'idle',
     dbFrame: null,
     dbFrameWindow: null,
     dbApi: null,
@@ -1233,6 +1317,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
       throw new Error(`${context}失败: ${outcome.error || '数据库未保存预设'}`);
     }
 
+    if (result?.scope === 'global') scheduleDatabaseSettingsConfirmation();
     if (outcome.warning) {
       runtime.presetWarnings[feature] = `${context}：${outcome.warning}`;
       warn(runtime.presetWarnings[feature]);
@@ -2058,7 +2143,13 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   async function runBindingUiAction(action) {
-    try { return await action(); } catch (error) {
+    const retryConfirmation = ['unconfirmed', 'unconfirmable'].includes(runtime.settingsPersistence);
+    if (retryConfirmation) runtime.settingsConfirmation?.cancel();
+    try {
+      const result = await action();
+      if (retryConfirmation) scheduleDatabaseSettingsConfirmation();
+      return result;
+    } catch (error) {
       runtime.lastError = String(error?.message || error);
       host.toastr?.error?.(runtime.lastError);
       refreshUiStatus();
@@ -2255,7 +2346,37 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
     if (!captured) throw new Error('数据库保存时未发现当前 settings_ACU 对象');
     runtime.settingsRef = captured;
     runtime.lastError = '';
+    if (mutationChanged) scheduleDatabaseSettingsConfirmation();
     return { settings: captured, changed: mutationChanged };
+  }
+
+  function scheduleDatabaseSettingsConfirmation() {
+    if (!runtime.started) return;
+    if (!runtime.settingsConfirmation) {
+      runtime.settingsConfirmation = createSettingsConfirmationCore({
+        read: async signal => {
+          const context = typeof SillyTavern === 'undefined' ? null : SillyTavern;
+          if (typeof context?.getRequestHeaders !== 'function') throw new Error('保存核验接口不可用');
+          const response = await fetch(new URL('/api/settings/get', host.location.href), {
+            method: 'POST', headers: context.getRequestHeaders(), body: '{}',
+            credentials: 'same-origin', cache: 'no-store', signal,
+          });
+          if (!response.ok) throw new Error('保存核验请求失败');
+          return databaseSettingsResponseCore(await response.json());
+        },
+        changed: status => {
+          runtime.settingsPersistence = status;
+          refreshUiStatus();
+          if (status === 'unconfirmed' || status === 'unconfirmable') {
+            host.toastr?.warning?.('数据库配置已应用，但未确认保存到服务器。请检查连接及数据库保存提示，暂勿刷新页面。');
+          }
+        },
+      });
+    }
+    // Resolve the current profile again; a previous dialog may have used another profile.
+    readStoredDatabaseSettings();
+    const namespace = readUserscriptVariables()?.[DB_STORAGE_CONTRACT.settingsNamespace];
+    runtime.settingsConfirmation.start(databaseSettingsSnapshotCore(namespace, runtime.databaseProfileKey));
   }
 
   async function applyActiveApiBinding(edit = null) {
@@ -2642,6 +2763,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
   }
 
   function invalidateBindingContext() {
+    runtime.settingsConfirmation?.cancel();
     runtime.contextEpoch += 1;
     runtime.contextController.abort();
     runtime.contextController = new AbortController();
@@ -5202,6 +5324,16 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
           + (verificationFailures.length ? `：${verificationFailures.join('、')}` : '')
           + (runtime.lastError ? `；错误：${runtime.lastError}` : '')
         : (runtime.lastError || '等待数据库运行时'));
+    const persistenceText = {
+      pending: '数据库配置已应用，等待服务器保存核验',
+      confirmed: '数据库配置已从服务器读回核对',
+      unconfirmed: '数据库配置未确认保存，请检查连接及数据库提示，暂勿刷新',
+      unconfirmable: '无法核验数据库配置是否已保存，暂勿刷新',
+    }[runtime.settingsPersistence];
+    if (persistenceText) {
+      footer.textContent += `；${persistenceText}`;
+      if (runtime.settingsPersistence !== 'confirmed') footer.className = 'is-warning';
+    }
     const refresh = overlay.querySelector('[data-last-write-refresh]');
     if (refresh) refresh.textContent = describeLastWriteWorldbookRefresh();
   }
@@ -5947,6 +6079,7 @@ https://polyformproject.org/licenses/noncommercial/1.0.0
 
   function destroy() {
     runtime.started = false;
+    runtime.settingsConfirmation?.cancel();
     invalidateBindingContext();
     clearTimeout(runtime.applyTimer);
     clearTimeout(runtime.databaseUiTimer);

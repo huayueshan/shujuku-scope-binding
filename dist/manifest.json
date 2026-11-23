@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "version": "1.7.13-dev.5",
+  "version": "1.7.13-dev.6",
   "status": "development",
   "repository": "huayueshan/shujuku-scope-binding",
   "license": "PolyForm-Noncommercial-1.0.0",
-  "sourceSha256": "e8e54585a436838d22365326ee21dcb2a756d4f4b7524dd455dee57ad541e2e8",
+  "sourceSha256": "e16d5466b279a64b880ebe0b5703af7977977bd87920900a51e01f6dda84256d",
   "files": {
     "index.js": {
-      "sha256": "e8e54585a436838d22365326ee21dcb2a756d4f4b7524dd455dee57ad541e2e8",
-      "bytes": 251812
+      "sha256": "e16d5466b279a64b880ebe0b5703af7977977bd87920900a51e01f6dda84256d",
+      "bytes": 257767
     }
   }
 }
